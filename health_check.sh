@@ -12,6 +12,7 @@ NC='\033[0m' # No Color
 # Parse command line arguments
 SKIP_FAIL2BAN=false
 SKIP_PACKAGE_UPDATES=false
+SKIP_SSH_CHECK=false
 
 # Parse command line options
 while [[ $# -gt 0 ]]; do
@@ -25,11 +26,16 @@ while [[ $# -gt 0 ]]; do
       SKIP_PACKAGE_UPDATES=true
       shift
       ;;
+    --skip-ssh-check)
+      SKIP_SSH_CHECK=true
+      shift
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo "Options:"
       echo "  --skip-fail2ban         Skip the fail2ban check"
-      echo "  --skip-package-updates  Skip the package updates check"
+      echo "  --skip-package-updates  Skip the package updates check" 
+      echo "  --skip-ssh-check        Skip the SSH security configuration check"
       echo "  -h, --help              Display this help message and exit"
       exit 0
       ;;
@@ -602,9 +608,91 @@ else
   echo -e "${BLUE}Checking pending package updates... ${YELLOW}[SKIPPED]${NC}"
 fi
 
+# Function to check SSH configuration
+check_ssh_config() {
+  echo -e "\n${YELLOW}=== SSH Security ===${NC}"
+  echo -e "${BLUE}Checking SSH configuration...${NC}"
+  
+  # Define the configuration file location
+  local ssh_config="/etc/ssh/sshd_config"
+  local issues=0
+  
+  # Check if the file exists
+  if [ ! -f "$ssh_config" ]; then
+    echo -e "  ${RED}FAIL: SSH configuration file not found at $ssh_config${NC}"
+    return 1
+  fi
+  
+  # Check for PermitRootLogin
+  root_login=$(grep -i "^PermitRootLogin" "$ssh_config" | awk '{print $2}')
+  
+  if [ -z "$root_login" ]; then
+    # Check for commented lines or if there's no setting at all
+    if grep -i "^#.*PermitRootLogin" "$ssh_config" > /dev/null; then
+      echo -e "  ${YELLOW}WARNING: PermitRootLogin is commented out, may be using default (permitted)${NC}"
+      ((issues++))
+    else
+      echo -e "  ${YELLOW}WARNING: PermitRootLogin is not set, may be using default (permitted)${NC}"
+      ((issues++))
+    fi
+  elif [[ "$root_login" == "yes" ]]; then
+    echo -e "  ${RED}FAIL: Root login is permitted${NC}"
+    ((issues++))
+  elif [[ "$root_login" == "no" || "$root_login" == "prohibit-password" ]]; then
+    echo -e "  ${GREEN}PASS: Root login is disabled or key-only${NC}"
+  else
+    echo -e "  ${YELLOW}WARNING: Unknown PermitRootLogin value: $root_login${NC}"
+    ((issues++))
+  fi
+  
+  # Check for PasswordAuthentication
+  password_auth=$(grep -i "^PasswordAuthentication" "$ssh_config" | awk '{print $2}')
+  
+  if [ -z "$password_auth" ]; then
+    # Check for commented lines or if there's no setting at all
+    if grep -i "^#.*PasswordAuthentication" "$ssh_config" > /dev/null; then
+      echo -e "  ${YELLOW}WARNING: PasswordAuthentication is commented out, may be using default (permitted)${NC}"
+      ((issues++))
+    else
+      echo -e "  ${YELLOW}WARNING: PasswordAuthentication is not set, may be using default (permitted)${NC}"
+      ((issues++))
+    fi
+  elif [[ "$password_auth" == "yes" ]]; then
+    echo -e "  ${RED}FAIL: Password authentication is enabled${NC}"
+    ((issues++))
+  elif [[ "$password_auth" == "no" ]]; then
+    echo -e "  ${GREEN}PASS: Password authentication is disabled${NC}"
+  else
+    echo -e "  ${YELLOW}WARNING: Unknown PasswordAuthentication value: $password_auth${NC}"
+    ((issues++))
+  fi
+  
+  # Check for overall security
+  if [ $issues -eq 0 ]; then
+    echo -e "  ${GREEN}PASS: SSH configuration is secure${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: SSH configuration has $issues security issue(s)${NC}"
+    echo -e "  ${YELLOW}Recommended settings:${NC}"
+    echo -e "    PermitRootLogin no"
+    echo -e "    PasswordAuthentication no"
+    return 1
+  fi
+}
+
 # Check NTP synchronization
 if ! check_ntp_sync; then
   ((failures++))
+fi
+
+# Check SSH configuration (unless skipped)
+if [ "$SKIP_SSH_CHECK" = false ]; then
+  if ! check_ssh_config; then
+    ((failures++))
+  fi
+else
+  echo -e "\n${YELLOW}=== SSH Security ===${NC}"
+  echo -e "${BLUE}Checking SSH configuration... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Summary

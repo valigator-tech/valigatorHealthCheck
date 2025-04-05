@@ -20,6 +20,7 @@ The script verifies the following aspects of your system:
 - **Security Services**: Checks that fail2ban is installed, enabled, and running
 - **System Updates**: Validates that there are no more than 5 package updates pending
 - **Time Synchronization**: Ensures some form of NTP time synchronization is active
+- **SSH Security**: Verifies SSH is configured securely with root login and password authentication disabled
 
 ## Usage
 
@@ -33,8 +34,11 @@ sudo ./health_check.sh --skip-fail2ban
 # Skip the package updates check
 sudo ./health_check.sh --skip-package-updates 
 
-# Skip both fail2ban and package updates checks
-sudo ./health_check.sh --skip-fail2ban --skip-package-updates
+# Skip the SSH security configuration check
+sudo ./health_check.sh --skip-ssh-check
+
+# Skip multiple checks
+sudo ./health_check.sh --skip-fail2ban --skip-package-updates --skip-ssh-check
 
 # Display help
 ./health_check.sh --help
