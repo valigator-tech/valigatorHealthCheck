@@ -13,6 +13,9 @@ NC='\033[0m' # No Color
 declare -A check_categories=(
   ["TCP Buffer Sizes"]="net.ipv4.tcp_rmem net.ipv4.tcp_wmem"
   ["TCP Optimization"]="net.ipv4.tcp_congestion_control net.ipv4.tcp_fastopen net.ipv4.tcp_timestamps net.ipv4.tcp_sack net.ipv4.tcp_low_latency net.ipv4.tcp_tw_reuse net.ipv4.tcp_no_metrics_save net.ipv4.tcp_moderate_rcvbuf"
+  ["Kernel Optimization"]="kernel.timer_migration kernel.hung_task_timeout_secs kernel.pid_max"
+  ["Virtual Memory Tuning"]="vm.swappiness vm.max_map_count vm.stat_interval vm.dirty_ratio vm.dirty_background_ratio vm.min_free_kbytes vm.dirty_expire_centisecs vm.dirty_writeback_centisecs vm.dirtytime_expire_seconds"
+  ["Solana Specific Tuning"]="net.core.rmem_max net.core.rmem_default net.core.wmem_max net.core.wmem_default"
   # Add more categories here in the future
 )
 
@@ -28,6 +31,22 @@ declare -A checks=(
   ["net.ipv4.tcp_tw_reuse"]="1"
   ["net.ipv4.tcp_no_metrics_save"]="1"
   ["net.ipv4.tcp_moderate_rcvbuf"]="1"
+  ["kernel.timer_migration"]="0"
+  ["kernel.hung_task_timeout_secs"]="30"
+  ["kernel.pid_max"]="49152"
+  ["vm.swappiness"]="30"
+  ["vm.max_map_count"]="2000000"
+  ["vm.stat_interval"]="10"
+  ["vm.dirty_ratio"]="40"
+  ["vm.dirty_background_ratio"]="10"
+  ["vm.min_free_kbytes"]="3000000"
+  ["vm.dirty_expire_centisecs"]="36000"
+  ["vm.dirty_writeback_centisecs"]="3000"
+  ["vm.dirtytime_expire_seconds"]="43200"
+  ["net.core.rmem_max"]="134217728"
+  ["net.core.rmem_default"]="134217728"
+  ["net.core.wmem_max"]="134217728"
+  ["net.core.wmem_default"]="134217728"
   # Add more checks here in the future
 )
 
