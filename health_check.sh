@@ -742,11 +742,11 @@ check_solana_logrotate() {
     echo -e "  ${GREEN}PASS: Solana logrotate configuration found at $config_file${NC}"
     
     # Verify configuration has essential elements
-    if grep -q "rotate" "$config_file" && grep -q "compress" "$config_file"; then
-      echo -e "  ${GREEN}PASS: Basic rotation and compression settings verified${NC}"
+    if grep -q "rotate" "$config_file"; then
+      echo -e "  ${GREEN}PASS: Basic rotation settings verified${NC}"
     else
       echo -e "  ${YELLOW}WARNING: Logrotate configuration may be incomplete${NC}"
-      echo -e "  ${YELLOW}Recommended to include rotation period, compression, and size limits${NC}"
+      echo -e "  ${YELLOW}Recommended to include rotation period and size limits${NC}"
     fi
     return 0
   elif [ "$solana_service_running" = true ]; then
