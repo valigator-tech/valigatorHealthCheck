@@ -9,10 +9,25 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Organize checks by category
+declare -A check_categories=(
+  ["TCP Buffer Sizes"]="net.ipv4.tcp_rmem net.ipv4.tcp_wmem"
+  ["TCP Optimization"]="net.ipv4.tcp_congestion_control net.ipv4.tcp_fastopen net.ipv4.tcp_timestamps net.ipv4.tcp_sack net.ipv4.tcp_low_latency net.ipv4.tcp_tw_reuse net.ipv4.tcp_no_metrics_save net.ipv4.tcp_moderate_rcvbuf"
+  # Add more categories here in the future
+)
+
 # Array of sysctl checks in format: "parameter expected_value"
 declare -A checks=(
   ["net.ipv4.tcp_rmem"]="10240 87380 12582912"
   ["net.ipv4.tcp_wmem"]="10240 87380 12582912"
+  ["net.ipv4.tcp_congestion_control"]="westwood"
+  ["net.ipv4.tcp_fastopen"]="3"
+  ["net.ipv4.tcp_timestamps"]="0"
+  ["net.ipv4.tcp_sack"]="1"
+  ["net.ipv4.tcp_low_latency"]="1"
+  ["net.ipv4.tcp_tw_reuse"]="1"
+  ["net.ipv4.tcp_no_metrics_save"]="1"
+  ["net.ipv4.tcp_moderate_rcvbuf"]="1"
   # Add more checks here in the future
 )
 
@@ -61,10 +76,20 @@ check_sysctl() {
 
 # Run all checks
 echo -e "${BLUE}Starting sysctl health checks...${NC}"
-for param in "${!checks[@]}"; do
-  if ! check_sysctl "$param" "${checks[$param]}"; then
-    ((failures++))
-  fi
+
+# Run checks by category
+for category in "${!check_categories[@]}"; do
+  echo -e "\n${YELLOW}=== $category ===${NC}"
+  
+  # Get all parameters in this category
+  params=(${check_categories[$category]})
+  
+  # Run each check in this category
+  for param in "${params[@]}"; do
+    if ! check_sysctl "$param" "${checks[$param]}"; then
+      ((failures++))
+    fi
+  done
 done
 
 # Summary
