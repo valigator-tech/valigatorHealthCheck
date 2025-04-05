@@ -9,6 +9,38 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Parse command line arguments
+SKIP_FAIL2BAN=false
+SKIP_PACKAGE_UPDATES=false
+
+# Parse command line options
+while [[ $# -gt 0 ]]; do
+  key="$1"
+  case $key in
+    --skip-fail2ban)
+      SKIP_FAIL2BAN=true
+      shift
+      ;;
+    --skip-package-updates)
+      SKIP_PACKAGE_UPDATES=true
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: $0 [OPTIONS]"
+      echo "Options:"
+      echo "  --skip-fail2ban         Skip the fail2ban check"
+      echo "  --skip-package-updates  Skip the package updates check"
+      echo "  -h, --help              Display this help message and exit"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $key"
+      echo "Use --help to see available options"
+      exit 1
+      ;;
+  esac
+done
+
 # Organize checks by category
 declare -A check_categories=(
   ["TCP Buffer Sizes"]="net.ipv4.tcp_rmem net.ipv4.tcp_wmem"
@@ -266,9 +298,14 @@ check_swap_disabled() {
   fi
 }
 
-# Check fail2ban service
-if ! check_fail2ban; then
-  ((failures++))
+# Check fail2ban service (unless skipped)
+if [ "$SKIP_FAIL2BAN" = false ]; then
+  if ! check_fail2ban; then
+    ((failures++))
+  fi
+else
+  echo -e "\n${YELLOW}=== Security Services ===${NC}"
+  echo -e "${BLUE}Checking fail2ban service... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check if CPU boost is enabled
@@ -471,9 +508,14 @@ check_ntp_sync() {
   fi
 }
 
-# Check package updates
-if ! check_package_updates; then
-  ((failures++))
+# Check package updates (unless skipped)
+if [ "$SKIP_PACKAGE_UPDATES" = false ]; then
+  if ! check_package_updates; then
+    ((failures++))
+  fi
+else
+  echo -e "\n${YELLOW}=== System Updates ===${NC}"
+  echo -e "${BLUE}Checking pending package updates... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Check NTP synchronization
