@@ -109,8 +109,9 @@ check_sysctl() {
 # Function to check CPU governor mode
 check_cpu_governor() {
   local expected="performance"
-  local governors=()
-  local all_pass=true
+  local mismatched_cpus=()
+  local total_cpus=0
+  local mismatched=0
 
   echo -e "\n${YELLOW}=== CPU Governor Settings ===${NC}"
   echo -e "${BLUE}Checking CPU governor mode...${NC}"
@@ -127,22 +128,32 @@ check_cpu_governor() {
       cpu_num=$(echo "$cpu_dir" | grep -o 'cpu[0-9]*' | sed 's/cpu//')
       current=$(cat "$cpu_dir/scaling_governor")
       
-      if [ "$current" != "$expected" ]; then
-        echo -e "  ${RED}FAIL: CPU $cpu_num governor is set to '$current'${NC}"
-        echo -e "  Expected: ${GREEN}$expected${NC}"
-        all_pass=false
-      else
-        echo -e "  ${GREEN}PASS: CPU $cpu_num governor is correctly set to '$current'${NC}"
-      fi
+      ((total_cpus++))
       
-      governors+=("$current")
+      if [ "$current" != "$expected" ]; then
+        mismatched_cpus+=("$cpu_num:$current")
+        ((mismatched++))
+      fi
     fi
   done
   
-  # Check if any failures occurred
-  if [ "$all_pass" = true ]; then
+  # Display a single summary line
+  if [ $mismatched -eq 0 ]; then
+    echo -e "  ${GREEN}PASS: All $total_cpus CPU cores are set to '$expected' governor${NC}"
     return 0
   else
+    echo -e "  ${RED}FAIL: $mismatched of $total_cpus CPU cores are not using '$expected' governor${NC}"
+    if [ $mismatched -le 4 ]; then
+      # Show details only if there are few mismatched cores
+      echo -ne "  Mismatched cores: "
+      for info in "${mismatched_cpus[@]}"; do
+        core=${info%%:*}
+        gov=${info#*:}
+        echo -ne "CPU $core=$gov "
+      done
+      echo ""
+    fi
+    echo -e "  Expected: ${GREEN}$expected${NC} for all cores"
     return 1
   fi
 }
@@ -165,8 +176,58 @@ for category in "${!check_categories[@]}"; do
   done
 done
 
+# Function to check if fail2ban is enabled and running
+check_fail2ban() {
+  echo -e "\n${YELLOW}=== Security Services ===${NC}"
+  echo -e "${BLUE}Checking fail2ban service...${NC}"
+  
+  # Check if systemctl command exists
+  if ! command -v systemctl &> /dev/null; then
+    echo -e "  ${RED}FAIL: systemctl command not found. Is this a systemd-based system?${NC}"
+    return 1
+  fi
+  
+  # Check if fail2ban service exists
+  if ! systemctl list-unit-files | grep -q fail2ban; then
+    echo -e "  ${RED}FAIL: fail2ban service is not installed${NC}"
+    return 1
+  fi
+  
+  # Check if fail2ban is enabled
+  if systemctl is-enabled fail2ban &> /dev/null; then
+    enabled_status="${GREEN}enabled${NC}"
+  else
+    enabled_status="${RED}disabled${NC}"
+    enabled_ok=false
+  fi
+  
+  # Check if fail2ban is running
+  if systemctl is-active fail2ban &> /dev/null; then
+    active_status="${GREEN}running${NC}"
+  else
+    active_status="${RED}stopped${NC}"
+    active_ok=false
+  fi
+  
+  # Display status
+  if [ "$enabled_status" = "${GREEN}enabled${NC}" ] && [ "$active_status" = "${GREEN}running${NC}" ]; then
+    echo -e "  ${GREEN}PASS: fail2ban service is enabled and running${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: fail2ban service status issue${NC}"
+    echo -e "  Service status: $active_status, boot status: $enabled_status"
+    echo -e "  Expected: ${GREEN}running${NC} and ${GREEN}enabled${NC}"
+    return 1
+  fi
+}
+
 # Check CPU governor
 if ! check_cpu_governor; then
+  ((failures++))
+fi
+
+# Check fail2ban service
+if ! check_fail2ban; then
   ((failures++))
 fi
 
