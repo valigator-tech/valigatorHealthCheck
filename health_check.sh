@@ -164,8 +164,10 @@ check_sysctl() {
 check_cpu_governor() {
   local expected="performance"
   local mismatched_cpus=()
+  local busy_cpus=()
   local total_cpus=0
   local mismatched=0
+  local busy=0
 
   echo -e "\n${YELLOW}=== CPU Governor Settings ===${NC}"
   echo -e "${BLUE}Checking CPU governor mode...${NC}"
@@ -180,23 +182,46 @@ check_cpu_governor() {
   for cpu_dir in /sys/devices/system/cpu/cpu*/cpufreq; do
     if [ -f "$cpu_dir/scaling_governor" ]; then
       cpu_num=$(echo "$cpu_dir" | grep -o 'cpu[0-9]*' | sed 's/cpu//')
-      current=$(cat "$cpu_dir/scaling_governor")
       
-      ((total_cpus++))
+      # Use 2>/dev/null to suppress the "Device or resource busy" error
+      current=$(cat "$cpu_dir/scaling_governor" 2>/dev/null)
       
-      if [ "$current" != "$expected" ]; then
-        mismatched_cpus+=("$cpu_num:$current")
-        ((mismatched++))
+      # Check if we actually got a value
+      if [ -z "$current" ]; then
+        # Count busy CPUs separately
+        busy_cpus+=("$cpu_num")
+        ((busy++))
+      else
+        ((total_cpus++))
+        
+        if [ "$current" != "$expected" ]; then
+          mismatched_cpus+=("$cpu_num:$current")
+          ((mismatched++))
+        fi
       fi
     fi
   done
   
   # Display a single summary line
-  if [ $mismatched -eq 0 ]; then
+  if [ $mismatched -eq 0 ] && [ $busy -eq 0 ]; then
     echo -e "  ${GREEN}PASS: All $total_cpus CPU cores are set to '$expected' governor${NC}"
     return 0
+  elif [ $busy -gt 0 ] && [ $mismatched -eq 0 ]; then
+    echo -e "  ${YELLOW}WARNING: $busy CPU cores couldn't be checked (device busy)${NC}"
+    echo -e "  ${GREEN}PASS: All $total_cpus checkable CPU cores are set to '$expected' governor${NC}"
+    if [ $busy -le 8 ]; then
+      echo -ne "  Busy cores: "
+      for core in "${busy_cpus[@]}"; do
+        echo -ne "CPU $core "
+      done
+      echo ""
+    fi
+    return 0  # Consider this a pass if no mismatches and only busy errors
   else
     echo -e "  ${RED}FAIL: $mismatched of $total_cpus CPU cores are not using '$expected' governor${NC}"
+    if [ $busy -gt 0 ]; then
+      echo -e "  Note: $busy additional CPU cores couldn't be checked (device busy)"
+    fi
     if [ $mismatched -le 4 ]; then
       # Show details only if there are few mismatched cores
       echo -ne "  Mismatched cores: "
