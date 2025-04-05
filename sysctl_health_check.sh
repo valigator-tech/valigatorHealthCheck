@@ -402,8 +402,82 @@ if ! check_cpu_boost; then
   ((failures++))
 fi
 
+# Function to check NTP synchronization status
+check_ntp_sync() {
+  echo -e "\n${YELLOW}=== Time Synchronization ===${NC}"
+  echo -e "${BLUE}Checking NTP time sync status...${NC}"
+  
+  local ntp_synced=false
+  local sync_method=""
+  
+  # Check for systemd-timesyncd
+  if command -v timedatectl &> /dev/null; then
+    if timedatectl status | grep -q "NTP service: active"; then
+      ntp_synced=true
+      sync_method="systemd-timesyncd"
+    elif timedatectl status | grep -q "NTP enabled: yes"; then
+      ntp_synced=true
+      sync_method="systemd NTP"
+    elif timedatectl status | grep -q "System clock synchronized: yes"; then
+      ntp_synced=true
+      sync_method="systemd (clock already synchronized)"
+    fi
+  fi
+  
+  # Check for chronyd if not already found
+  if [ "$ntp_synced" = false ] && command -v chronyc &> /dev/null; then
+    if chronyc tracking &> /dev/null; then
+      sync_status=$(chronyc tracking | grep "Leap status" | cut -d ":" -f2 | xargs)
+      if [ "$sync_status" = "Normal" ] || [ "$sync_status" = "Synchronized" ]; then
+        ntp_synced=true
+        sync_method="chrony"
+      fi
+    fi
+  fi
+  
+  # Check for ntpd if not already found
+  if [ "$ntp_synced" = false ] && command -v ntpq &> /dev/null; then
+    if ntpq -p &> /dev/null && ntpq -c rv | grep -q "sync"; then
+      ntp_synced=true
+      sync_method="ntpd"
+    fi
+  fi
+  
+  # Check for OpenNTPD if not already found
+  if [ "$ntp_synced" = false ] && command -v ntpctl &> /dev/null; then
+    if ntpctl -s status | grep -q "clock synced"; then
+      ntp_synced=true
+      sync_method="OpenNTPD"
+    fi
+  fi
+  
+  # Check for running NTP services if not already found
+  if [ "$ntp_synced" = false ] && command -v systemctl &> /dev/null; then
+    if systemctl is-active --quiet ntpd || systemctl is-active --quiet chronyd || \
+       systemctl is-active --quiet systemd-timesyncd || systemctl is-active --quiet openntpd; then
+      ntp_synced=true
+      sync_method="active NTP service"
+    fi
+  fi
+  
+  # Display result
+  if [ "$ntp_synced" = true ]; then
+    echo -e "  ${GREEN}PASS: Time synchronization is enabled ($sync_method)${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: No active time synchronization detected${NC}"
+    echo -e "  Expected: ${GREEN}Enabled NTP service${NC} (systemd-timesyncd, chronyd, ntpd, or OpenNTPD)"
+    return 1
+  fi
+}
+
 # Check package updates
 if ! check_package_updates; then
+  ((failures++))
+fi
+
+# Check NTP synchronization
+if ! check_ntp_sync; then
   ((failures++))
 fi
 
