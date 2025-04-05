@@ -77,7 +77,20 @@ check_sysctl() {
     return 1
   fi
   
-  # Normalize whitespace in both expected and current values
+  # Special case for kernel.pid_max which should be equal to or greater than expected
+  if [ "$param" = "kernel.pid_max" ]; then
+    if [ "$current" -ge "$expected" ]; then
+      echo -e "  ${GREEN}PASS: $param value is sufficient: $current (minimum required: $expected)${NC}"
+      return 0
+    else
+      echo -e "  ${RED}FAIL: $param value is too low.${NC}"
+      echo -e "  Current value: ${YELLOW}$current${NC}"
+      echo -e "  Minimum required: ${GREEN}$expected${NC}"
+      return 1
+    fi
+  fi
+  
+  # For other parameters, normalize whitespace and check for exact match
   normalized_expected=$(normalize_whitespace "$expected")
   normalized_current=$(normalize_whitespace "$current")
   
@@ -93,10 +106,51 @@ check_sysctl() {
   fi
 }
 
-# Run all checks
-echo -e "${BLUE}Starting sysctl health checks...${NC}"
+# Function to check CPU governor mode
+check_cpu_governor() {
+  local expected="performance"
+  local governors=()
+  local all_pass=true
 
-# Run checks by category
+  echo -e "\n${YELLOW}=== CPU Governor Settings ===${NC}"
+  echo -e "${BLUE}Checking CPU governor mode...${NC}"
+  
+  # Check if the cpu frequency scaling directory exists
+  if [ ! -d "/sys/devices/system/cpu/cpu0/cpufreq" ]; then
+    echo -e "  ${RED}FAIL: CPU frequency scaling is not available on this system.${NC}"
+    return 1
+  fi
+  
+  # Check governor for each CPU
+  for cpu_dir in /sys/devices/system/cpu/cpu*/cpufreq; do
+    if [ -f "$cpu_dir/scaling_governor" ]; then
+      cpu_num=$(echo "$cpu_dir" | grep -o 'cpu[0-9]*' | sed 's/cpu//')
+      current=$(cat "$cpu_dir/scaling_governor")
+      
+      if [ "$current" != "$expected" ]; then
+        echo -e "  ${RED}FAIL: CPU $cpu_num governor is set to '$current'${NC}"
+        echo -e "  Expected: ${GREEN}$expected${NC}"
+        all_pass=false
+      else
+        echo -e "  ${GREEN}PASS: CPU $cpu_num governor is correctly set to '$current'${NC}"
+      fi
+      
+      governors+=("$current")
+    fi
+  done
+  
+  # Check if any failures occurred
+  if [ "$all_pass" = true ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Run all checks
+echo -e "${BLUE}Starting system health checks...${NC}"
+
+# Run sysctl checks by category
 for category in "${!check_categories[@]}"; do
   echo -e "\n${YELLOW}=== $category ===${NC}"
   
@@ -110,6 +164,11 @@ for category in "${!check_categories[@]}"; do
     fi
   done
 done
+
+# Check CPU governor
+if ! check_cpu_governor; then
+  ((failures++))
+fi
 
 # Summary
 echo ""
