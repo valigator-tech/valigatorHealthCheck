@@ -53,12 +53,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# If quiet mode is enabled, redirect all output to /dev/null
-# But save the original stdout first to restore it for the summary
-if [ "$QUIET_MODE" = true ]; then
-  exec 3>&1
-  exec 1>/dev/null 2>/dev/null
-fi
+# Function to output messages based on quiet mode
+output() {
+  if [ "$QUIET_MODE" = false ]; then
+    echo -e "$@"
+  fi
+}
 
 # Organize checks by category
 declare -A check_categories=(
@@ -117,14 +117,14 @@ check_sysctl() {
   local normalized_expected
   local normalized_current
 
-  echo -e "${BLUE}Checking $param...${NC}"
+  output "${BLUE}Checking $param...${NC}"
   
   # Get the current value
   current=$(sysctl -n "$param" 2>/dev/null)
   
   # Check if sysctl command was successful
   if [ $? -ne 0 ]; then
-    echo -e "${RED}ERROR: Could not retrieve $param value. This may not be a Linux system or you don't have permission.${NC}"
+    output "${RED}ERROR: Could not retrieve $param value. This may not be a Linux system or you don't have permission.${NC}"
     return 1
   fi
   
@@ -257,11 +257,11 @@ check_cpu_governor() {
 }
 
 # Run all checks
-echo -e "${BLUE}Starting system health checks...${NC}"
+output "${BLUE}Starting system health checks...${NC}"
 
 # Run sysctl checks by category
 for category in "${!check_categories[@]}"; do
-  echo -e "\n${YELLOW}=== $category ===${NC}"
+  output "\n${YELLOW}=== $category ===${NC}"
   
   # Get all parameters in this category
   params=(${check_categories[$category]})
@@ -889,11 +889,6 @@ if ! check_unattended_upgrades_disabled; then
 fi
 
 # Summary - Always show this part even in quiet mode
-if [ "$QUIET_MODE" = true ]; then
-  # Restore stdout for the summary
-  exec 1>&3
-fi
-
 echo ""
 echo -e "${BLUE}Health check complete.${NC}"
 if [ $failures -eq 0 ]; then
