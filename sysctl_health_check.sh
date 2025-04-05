@@ -351,8 +351,59 @@ if ! check_swap_disabled; then
   ((failures++))
 fi
 
+# Function to check for package updates
+check_package_updates() {
+  echo -e "\n${YELLOW}=== System Updates ===${NC}"
+  echo -e "${BLUE}Checking pending package updates...${NC}"
+  
+  local max_allowed_updates=5
+  local update_count=0
+  local pkgmanager=""
+  
+  # Detect package manager
+  if command -v apt &> /dev/null; then
+    pkgmanager="apt"
+    # Ensure package lists are up-to-date but don't update packages
+    apt-get update -qq &> /dev/null
+    update_count=$(apt list --upgradable 2>/dev/null | grep -v "Listing..." | wc -l)
+  elif command -v dnf &> /dev/null; then
+    pkgmanager="dnf"
+    update_count=$(dnf check-update --quiet 2>/dev/null | grep -v "^$" | wc -l)
+  elif command -v yum &> /dev/null; then
+    pkgmanager="yum"
+    update_count=$(yum check-update --quiet 2>/dev/null | grep -v "^$" | wc -l)
+  elif command -v pacman &> /dev/null; then
+    pkgmanager="pacman"
+    # Update package database first
+    pacman -Sy &>/dev/null
+    update_count=$(pacman -Qu | wc -l)
+  elif command -v zypper &> /dev/null; then
+    pkgmanager="zypper"
+    update_count=$(zypper list-updates 2>/dev/null | grep "|" | grep -v "^+-" | wc -l)
+  else
+    echo -e "  ${YELLOW}WARNING: Could not determine package manager${NC}"
+    return 0  # Don't count as failure since we can't determine
+  fi
+  
+  # Check if update count is acceptable
+  if [ "$update_count" -le "$max_allowed_updates" ]; then
+    echo -e "  ${GREEN}PASS: $update_count package update(s) pending ($pkgmanager)${NC}"
+    echo -e "  Maximum allowed: $max_allowed_updates"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: $update_count package update(s) pending ($pkgmanager)${NC}"
+    echo -e "  Maximum allowed: ${GREEN}$max_allowed_updates${NC}"
+    return 1
+  fi
+}
+
 # Check CPU boost status
 if ! check_cpu_boost; then
+  ((failures++))
+fi
+
+# Check package updates
+if ! check_package_updates; then
   ((failures++))
 fi
 
