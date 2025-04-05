@@ -42,6 +42,12 @@ sudo ./health_check.sh --skip-ssh-check
 # Skip multiple checks
 sudo ./health_check.sh --skip-fail2ban --skip-package-updates --skip-ssh-check
 
+# Quiet mode (only show final results)
+sudo ./health_check.sh --quiet
+
+# Quiet mode with short flag
+sudo ./health_check.sh -q
+
 # Display help
 ./health_check.sh --help
 ```

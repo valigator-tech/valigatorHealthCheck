@@ -56,7 +56,7 @@ done
 # Function to output messages based on quiet mode
 output() {
   if [ "$QUIET_MODE" = false ]; then
-    output "$@"
+    echo -e "$@"
   fi
 }
 
@@ -131,12 +131,12 @@ check_sysctl() {
   # Special case for kernel.pid_max which should be equal to or greater than expected
   if [ "$param" = "kernel.pid_max" ]; then
     if [ "$current" -ge "$expected" ]; then
-      output "  ${GREEN}PASS: $param value is sufficient: $current (minimum required: $expected)${NC}"
+      echo -e "  ${GREEN}PASS: $param value is sufficient: $current (minimum required: $expected)${NC}"
       return 0
     else
-      output "  ${RED}FAIL: $param value is too low.${NC}"
-      output "  Current value: ${YELLOW}$current${NC}"
-      output "  Minimum required: ${GREEN}$expected${NC}"
+      echo -e "  ${RED}FAIL: $param value is too low.${NC}"
+      echo -e "  Current value: ${YELLOW}$current${NC}"
+      echo -e "  Minimum required: ${GREEN}$expected${NC}"
       return 1
     fi
   fi
@@ -144,22 +144,22 @@ check_sysctl() {
   # Special case for vm.swappiness which should be 30 or lower
   if [ "$param" = "vm.swappiness" ]; then
     if [ "$current" -le 30 ]; then
-      output "  ${GREEN}PASS: $param value is acceptable: $current (maximum allowed: 30)${NC}"
+      echo -e "  ${GREEN}PASS: $param value is acceptable: $current (maximum allowed: 30)${NC}"
       return 0
     else
-      output "  ${RED}FAIL: $param value is too high.${NC}"
-      output "  Current value: ${YELLOW}$current${NC}"
-      output "  Maximum allowed: ${GREEN}30${NC}"
+      echo -e "  ${RED}FAIL: $param value is too high.${NC}"
+      echo -e "  Current value: ${YELLOW}$current${NC}"
+      echo -e "  Maximum allowed: ${GREEN}30${NC}"
       return 1
     fi
   fi
   
   # Special case for tcp_congestion_control if set to bbr
   if [ "$param" = "net.ipv4.tcp_congestion_control" ] && [ "$current" = "bbr" ]; then
-    output "  ${YELLOW}WARNING: $param is set to BBR instead of westwood${NC}"
-    output "  Current value: ${YELLOW}$current${NC}"
-    output "  Expected value: ${GREEN}$expected${NC}"
-    output "  ${YELLOW}This is acceptable as BBR is also a good congestion control algorithm${NC}"
+    echo -e "  ${YELLOW}WARNING: $param is set to BBR instead of westwood${NC}"
+    echo -e "  Current value: ${YELLOW}$current${NC}"
+    echo -e "  Expected value: ${GREEN}$expected${NC}"
+    echo -e "  ${YELLOW}This is acceptable as BBR is also a good congestion control algorithm${NC}"
     return 0  # Return success since BBR is an acceptable alternative
   fi
   
@@ -169,12 +169,12 @@ check_sysctl() {
   
   # Check if the normalized values match
   if [ "$normalized_current" != "$normalized_expected" ]; then
-    output "  ${RED}FAIL: $param value is incorrect.${NC}"
-    output "  Current value: ${YELLOW}$current${NC}"
-    output "  Expected value: ${GREEN}$expected${NC}"
+    echo -e "  ${RED}FAIL: $param value is incorrect.${NC}"
+    echo -e "  Current value: ${YELLOW}$current${NC}"
+    echo -e "  Expected value: ${GREEN}$expected${NC}"
     return 1
   else
-    output "  ${GREEN}PASS: $param value is correct: $current${NC}"
+    echo -e "  ${GREEN}PASS: $param value is correct: $current${NC}"
     return 0
   fi
 }
@@ -188,12 +188,12 @@ check_cpu_governor() {
   local mismatched=0
   local busy=0
 
-  output "\n${YELLOW}=== CPU Governor Settings ===${NC}"
-  output "${BLUE}Checking CPU governor mode...${NC}"
+  echo -e "\n${YELLOW}=== CPU Governor Settings ===${NC}"
+  echo -e "${BLUE}Checking CPU governor mode...${NC}"
   
   # Check if the cpu frequency scaling directory exists
   if [ ! -d "/sys/devices/system/cpu/cpu0/cpufreq" ]; then
-    output "  ${RED}FAIL: CPU frequency scaling is not available on this system.${NC}"
+    echo -e "  ${RED}FAIL: CPU frequency scaling is not available on this system.${NC}"
     return 1
   fi
   
@@ -223,11 +223,11 @@ check_cpu_governor() {
   
   # Display a single summary line
   if [ $mismatched -eq 0 ] && [ $busy -eq 0 ]; then
-    output "  ${GREEN}PASS: All $total_cpus CPU cores are set to '$expected' governor${NC}"
+    echo -e "  ${GREEN}PASS: All $total_cpus CPU cores are set to '$expected' governor${NC}"
     return 0
   elif [ $busy -gt 0 ] && [ $mismatched -eq 0 ]; then
-    output "  ${YELLOW}WARNING: $busy CPU cores couldn't be checked (device busy)${NC}"
-    output "  ${GREEN}PASS: All $total_cpus checkable CPU cores are set to '$expected' governor${NC}"
+    echo -e "  ${YELLOW}WARNING: $busy CPU cores couldn't be checked (device busy)${NC}"
+    echo -e "  ${GREEN}PASS: All $total_cpus checkable CPU cores are set to '$expected' governor${NC}"
     if [ $busy -le 8 ]; then
       echo -ne "  Busy cores: "
       for core in "${busy_cpus[@]}"; do
@@ -237,9 +237,9 @@ check_cpu_governor() {
     fi
     return 0  # Consider this a pass if no mismatches and only busy errors
   else
-    output "  ${RED}FAIL: $mismatched of $total_cpus CPU cores are not using '$expected' governor${NC}"
+    echo -e "  ${RED}FAIL: $mismatched of $total_cpus CPU cores are not using '$expected' governor${NC}"
     if [ $busy -gt 0 ]; then
-      output "  Note: $busy additional CPU cores couldn't be checked (device busy)"
+      echo -e "  Note: $busy additional CPU cores couldn't be checked (device busy)"
     fi
     if [ $mismatched -le 4 ]; then
       # Show details only if there are few mismatched cores
@@ -251,7 +251,7 @@ check_cpu_governor() {
       done
       echo ""
     fi
-    output "  Expected: ${GREEN}$expected${NC} for all cores"
+    echo -e "  Expected: ${GREEN}$expected${NC} for all cores"
     return 1
   fi
 }
@@ -276,18 +276,18 @@ done
 
 # Function to check if fail2ban is enabled and running
 check_fail2ban() {
-  output "\n${YELLOW}=== Security Services ===${NC}"
-  output "${BLUE}Checking fail2ban service...${NC}"
+  echo -e "\n${YELLOW}=== Security Services ===${NC}"
+  echo -e "${BLUE}Checking fail2ban service...${NC}"
   
   # Check if systemctl command exists
   if ! command -v systemctl &> /dev/null; then
-    output "  ${RED}FAIL: systemctl command not found. Is this a systemd-based system?${NC}"
+    echo -e "  ${RED}FAIL: systemctl command not found. Is this a systemd-based system?${NC}"
     return 1
   fi
   
   # Check if fail2ban service exists
   if ! systemctl list-unit-files | grep -q fail2ban; then
-    output "  ${RED}FAIL: fail2ban service is not installed${NC}"
+    echo -e "  ${RED}FAIL: fail2ban service is not installed${NC}"
     return 1
   fi
   
@@ -309,12 +309,12 @@ check_fail2ban() {
   
   # Display status
   if [ "$enabled_status" = "${GREEN}enabled${NC}" ] && [ "$active_status" = "${GREEN}running${NC}" ]; then
-    output "  ${GREEN}PASS: fail2ban service is enabled and running${NC}"
+    echo -e "  ${GREEN}PASS: fail2ban service is enabled and running${NC}"
     return 0
   else
-    output "  ${RED}FAIL: fail2ban service status issue${NC}"
-    output "  Service status: $active_status, boot status: $enabled_status"
-    output "  Expected: ${GREEN}running${NC} and ${GREEN}enabled${NC}"
+    echo -e "  ${RED}FAIL: fail2ban service status issue${NC}"
+    echo -e "  Service status: $active_status, boot status: $enabled_status"
+    echo -e "  Expected: ${GREEN}running${NC} and ${GREEN}enabled${NC}"
     return 1
   fi
 }
@@ -326,8 +326,8 @@ fi
 
 # Function to check if swap is disabled
 check_swap_disabled() {
-  output "\n${YELLOW}=== Memory Management ===${NC}"
-  output "${BLUE}Checking swap status...${NC}"
+  echo -e "\n${YELLOW}=== Memory Management ===${NC}"
+  echo -e "${BLUE}Checking swap status...${NC}"
   
   # Get swap information using swapon command
   if command -v swapon &> /dev/null; then
@@ -347,19 +347,19 @@ check_swap_disabled() {
         swap_status="enabled"
       fi
     else
-      output "  ${RED}FAIL: Unable to determine swap status${NC}"
+      echo -e "  ${RED}FAIL: Unable to determine swap status${NC}"
       return 1
     fi
   fi
   
   # Check swap status
   if [ "$swap_status" = "disabled" ]; then
-    output "  ${GREEN}PASS: Swap is disabled${NC}"
+    echo -e "  ${GREEN}PASS: Swap is disabled${NC}"
     return 0
   else
-    output "  ${RED}FAIL: Swap is enabled${NC}"
-    output "  Current status: Swap is ${RED}$swap_status${NC}"
-    output "  Expected: Swap should be ${GREEN}disabled${NC}"
+    echo -e "  ${RED}FAIL: Swap is enabled${NC}"
+    echo -e "  Current status: Swap is ${RED}$swap_status${NC}"
+    echo -e "  Expected: Swap should be ${GREEN}disabled${NC}"
     return 1
   fi
 }
@@ -370,14 +370,14 @@ if [ "$SKIP_FAIL2BAN" = false ]; then
     ((failures++))
   fi
 else
-  output "\n${YELLOW}=== Security Services ===${NC}"
-  output "${BLUE}Checking fail2ban service... ${YELLOW}[SKIPPED]${NC}"
+  echo -e "\n${YELLOW}=== Security Services ===${NC}"
+  echo -e "${BLUE}Checking fail2ban service... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check if CPU boost is enabled
 check_cpu_boost() {
-  output "\n${YELLOW}=== CPU Performance ===${NC}"
-  output "${BLUE}Checking CPU boost status...${NC}"
+  echo -e "\n${YELLOW}=== CPU Performance ===${NC}"
+  echo -e "${BLUE}Checking CPU boost status...${NC}"
   
   local boost_path="/sys/devices/system/cpu/cpufreq/boost"
   local intel_boost_path="/sys/devices/system/cpu/intel_pstate/no_turbo"
@@ -432,19 +432,19 @@ check_cpu_boost() {
         boost_status="disabled"
       fi
     else
-      output "  ${YELLOW}WARNING: Could not determine CPU boost status${NC}"
-      output "  ${YELLOW}This might be due to the system not supporting CPU boost or using a different method${NC}"
+      echo -e "  ${YELLOW}WARNING: Could not determine CPU boost status${NC}"
+      echo -e "  ${YELLOW}This might be due to the system not supporting CPU boost or using a different method${NC}"
       return 0  # Don't count as failure since we can't determine for sure
     fi
   fi
   
   # Check boost status
   if [ "$boost_status" = "enabled" ]; then
-    output "  ${GREEN}PASS: CPU boost is enabled${NC}"
+    echo -e "  ${GREEN}PASS: CPU boost is enabled${NC}"
     return 0
   elif [ "$boost_status" = "disabled" ]; then
-    output "  ${RED}FAIL: CPU boost is disabled${NC}"
-    output "  Expected: ${GREEN}enabled${NC}"
+    echo -e "  ${RED}FAIL: CPU boost is disabled${NC}"
+    echo -e "  Expected: ${GREEN}enabled${NC}"
     return 1
   fi
 }
@@ -456,8 +456,8 @@ fi
 
 # Function to check for package updates
 check_package_updates() {
-  output "\n${YELLOW}=== System Updates ===${NC}"
-  output "${BLUE}Checking pending package updates...${NC}"
+  echo -e "\n${YELLOW}=== System Updates ===${NC}"
+  echo -e "${BLUE}Checking pending package updates...${NC}"
   
   local max_allowed_updates=5
   local update_count=0
@@ -484,30 +484,30 @@ check_package_updates() {
     pkgmanager="zypper"
     update_count=$(zypper list-updates 2>/dev/null | grep "|" | grep -v "^+-" | wc -l)
   else
-    output "  ${YELLOW}WARNING: Could not determine package manager${NC}"
+    echo -e "  ${YELLOW}WARNING: Could not determine package manager${NC}"
     return 0  # Don't count as failure since we can't determine
   fi
   
   # Check if update count is acceptable
   if [ "$update_count" -le "$max_allowed_updates" ]; then
-    output "  ${GREEN}PASS: $update_count package update(s) pending ($pkgmanager)${NC}"
-    output "  Maximum allowed: $max_allowed_updates"
+    echo -e "  ${GREEN}PASS: $update_count package update(s) pending ($pkgmanager)${NC}"
+    echo -e "  Maximum allowed: $max_allowed_updates"
     return 0
   else
-    output "  ${RED}FAIL: $update_count package update(s) pending ($pkgmanager)${NC}"
-    output "  Maximum allowed: ${GREEN}$max_allowed_updates${NC}"
+    echo -e "  ${RED}FAIL: $update_count package update(s) pending ($pkgmanager)${NC}"
+    echo -e "  Maximum allowed: ${GREEN}$max_allowed_updates${NC}"
     return 1
   fi
 }
 
 # Function to check if p-state driver is being used
 check_pstate_driver() {
-  output "\n${YELLOW}=== CPU Driver ===${NC}"
-  output "${BLUE}Checking CPU scaling driver...${NC}"
+  echo -e "\n${YELLOW}=== CPU Driver ===${NC}"
+  echo -e "${BLUE}Checking CPU scaling driver...${NC}"
   
   # Check if CPU frequency scaling is available
   if [ ! -d "/sys/devices/system/cpu/cpu0/cpufreq" ]; then
-    output "  ${RED}FAIL: CPU frequency scaling is not available on this system.${NC}"
+    echo -e "  ${RED}FAIL: CPU frequency scaling is not available on this system.${NC}"
     return 1
   fi
   
@@ -518,16 +518,16 @@ check_pstate_driver() {
     
     # Check if the driver contains "pstate"
     if [[ "$driver" == *"pstate"* ]]; then
-      output "  ${GREEN}PASS: CPU is using p-state driver: $driver${NC}"
+      echo -e "  ${GREEN}PASS: CPU is using p-state driver: $driver${NC}"
       return 0
     else
-      output "  ${RED}FAIL: CPU is not using p-state driver${NC}"
-      output "  Current driver: ${YELLOW}$driver${NC}"
-      output "  Expected: ${GREEN}intel_pstate or amd_pstate${NC}"
+      echo -e "  ${RED}FAIL: CPU is not using p-state driver${NC}"
+      echo -e "  Current driver: ${YELLOW}$driver${NC}"
+      echo -e "  Expected: ${GREEN}intel_pstate or amd_pstate${NC}"
       return 1
     fi
   else
-    output "  ${RED}FAIL: Could not determine CPU scaling driver${NC}"
+    echo -e "  ${RED}FAIL: Could not determine CPU scaling driver${NC}"
     return 1
   fi
 }
@@ -544,8 +544,8 @@ fi
 
 # Function to check NTP synchronization status
 check_ntp_sync() {
-  output "\n${YELLOW}=== Time Synchronization ===${NC}"
-  output "${BLUE}Checking NTP time sync status...${NC}"
+  echo -e "\n${YELLOW}=== Time Synchronization ===${NC}"
+  echo -e "${BLUE}Checking NTP time sync status...${NC}"
   
   local ntp_synced=false
   local sync_method=""
@@ -602,11 +602,11 @@ check_ntp_sync() {
   
   # Display result
   if [ "$ntp_synced" = true ]; then
-    output "  ${GREEN}PASS: Time synchronization is enabled ($sync_method)${NC}"
+    echo -e "  ${GREEN}PASS: Time synchronization is enabled ($sync_method)${NC}"
     return 0
   else
-    output "  ${RED}FAIL: No active time synchronization detected${NC}"
-    output "  Expected: ${GREEN}Enabled NTP service${NC} (systemd-timesyncd, chronyd, ntpd, or OpenNTPD)"
+    echo -e "  ${RED}FAIL: No active time synchronization detected${NC}"
+    echo -e "  Expected: ${GREEN}Enabled NTP service${NC} (systemd-timesyncd, chronyd, ntpd, or OpenNTPD)"
     return 1
   fi
 }
@@ -617,14 +617,14 @@ if [ "$SKIP_PACKAGE_UPDATES" = false ]; then
     ((failures++))
   fi
 else
-  output "\n${YELLOW}=== System Updates ===${NC}"
-  output "${BLUE}Checking pending package updates... ${YELLOW}[SKIPPED]${NC}"
+  echo -e "\n${YELLOW}=== System Updates ===${NC}"
+  echo -e "${BLUE}Checking pending package updates... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check SSH configuration
 check_ssh_config() {
-  output "\n${YELLOW}=== SSH Security ===${NC}"
-  output "${BLUE}Checking SSH configuration...${NC}"
+  echo -e "\n${YELLOW}=== SSH Security ===${NC}"
+  echo -e "${BLUE}Checking SSH configuration...${NC}"
   
   # Define the configuration file location
   local ssh_config="/etc/ssh/sshd_config"
@@ -632,7 +632,7 @@ check_ssh_config() {
   
   # Check if the file exists
   if [ ! -f "$ssh_config" ]; then
-    output "  ${RED}FAIL: SSH configuration file not found at $ssh_config${NC}"
+    echo -e "  ${RED}FAIL: SSH configuration file not found at $ssh_config${NC}"
     return 1
   fi
   
@@ -642,19 +642,19 @@ check_ssh_config() {
   if [ -z "$root_login" ]; then
     # Check for commented lines or if there's no setting at all
     if grep -i "^#.*PermitRootLogin" "$ssh_config" > /dev/null; then
-      output "  ${YELLOW}WARNING: PermitRootLogin is commented out, may be using default (permitted)${NC}"
+      echo -e "  ${YELLOW}WARNING: PermitRootLogin is commented out, may be using default (permitted)${NC}"
       ((issues++))
     else
-      output "  ${YELLOW}WARNING: PermitRootLogin is not set, may be using default (permitted)${NC}"
+      echo -e "  ${YELLOW}WARNING: PermitRootLogin is not set, may be using default (permitted)${NC}"
       ((issues++))
     fi
   elif [[ "$root_login" == "yes" ]]; then
-    output "  ${RED}FAIL: Root login is permitted${NC}"
+    echo -e "  ${RED}FAIL: Root login is permitted${NC}"
     ((issues++))
   elif [[ "$root_login" == "no" || "$root_login" == "prohibit-password" ]]; then
-    output "  ${GREEN}PASS: Root login is disabled or key-only${NC}"
+    echo -e "  ${GREEN}PASS: Root login is disabled or key-only${NC}"
   else
-    output "  ${YELLOW}WARNING: Unknown PermitRootLogin value: $root_login${NC}"
+    echo -e "  ${YELLOW}WARNING: Unknown PermitRootLogin value: $root_login${NC}"
     ((issues++))
   fi
   
@@ -664,31 +664,31 @@ check_ssh_config() {
   if [ -z "$password_auth" ]; then
     # Check for commented lines or if there's no setting at all
     if grep -i "^#.*PasswordAuthentication" "$ssh_config" > /dev/null; then
-      output "  ${YELLOW}WARNING: PasswordAuthentication is commented out, may be using default (permitted)${NC}"
+      echo -e "  ${YELLOW}WARNING: PasswordAuthentication is commented out, may be using default (permitted)${NC}"
       ((issues++))
     else
-      output "  ${YELLOW}WARNING: PasswordAuthentication is not set, may be using default (permitted)${NC}"
+      echo -e "  ${YELLOW}WARNING: PasswordAuthentication is not set, may be using default (permitted)${NC}"
       ((issues++))
     fi
   elif [[ "$password_auth" == "yes" ]]; then
-    output "  ${RED}FAIL: Password authentication is enabled${NC}"
+    echo -e "  ${RED}FAIL: Password authentication is enabled${NC}"
     ((issues++))
   elif [[ "$password_auth" == "no" ]]; then
-    output "  ${GREEN}PASS: Password authentication is disabled${NC}"
+    echo -e "  ${GREEN}PASS: Password authentication is disabled${NC}"
   else
-    output "  ${YELLOW}WARNING: Unknown PasswordAuthentication value: $password_auth${NC}"
+    echo -e "  ${YELLOW}WARNING: Unknown PasswordAuthentication value: $password_auth${NC}"
     ((issues++))
   fi
   
   # Check for overall security
   if [ $issues -eq 0 ]; then
-    output "  ${GREEN}PASS: SSH configuration is secure${NC}"
+    echo -e "  ${GREEN}PASS: SSH configuration is secure${NC}"
     return 0
   else
-    output "  ${RED}FAIL: SSH configuration has $issues security issue(s)${NC}"
-    output "  ${YELLOW}Recommended settings:${NC}"
-    output "    PermitRootLogin no"
-    output "    PasswordAuthentication no"
+    echo -e "  ${RED}FAIL: SSH configuration has $issues security issue(s)${NC}"
+    echo -e "  ${YELLOW}Recommended settings:${NC}"
+    echo -e "    PermitRootLogin no"
+    echo -e "    PasswordAuthentication no"
     return 1
   fi
 }
@@ -700,8 +700,8 @@ fi
 
 # Function to check logrotate configuration for Solana
 check_solana_logrotate() {
-  output "\n${YELLOW}=== Log Management ===${NC}"
-  output "${BLUE}Checking logrotate configuration for Solana...${NC}"
+  echo -e "\n${YELLOW}=== Log Management ===${NC}"
+  echo -e "${BLUE}Checking logrotate configuration for Solana...${NC}"
   
   # Define potential locations and patterns
   local logrotate_dir="/etc/logrotate.d"
@@ -711,13 +711,13 @@ check_solana_logrotate() {
   
   # Check if logrotate is installed
   if ! command -v logrotate &> /dev/null; then
-    output "  ${RED}FAIL: logrotate is not installed${NC}"
+    echo -e "  ${RED}FAIL: logrotate is not installed${NC}"
     return 1
   fi
   
   # Check if logrotate.d directory exists
   if [ ! -d "$logrotate_dir" ]; then
-    output "  ${RED}FAIL: logrotate.d directory not found${NC}"
+    echo -e "  ${RED}FAIL: logrotate.d directory not found${NC}"
     return 1
   fi
   
@@ -752,23 +752,23 @@ check_solana_logrotate() {
   
   # Report findings
   if [ "$found" = true ]; then
-    output "  ${GREEN}PASS: Solana logrotate configuration found at $config_file${NC}"
+    echo -e "  ${GREEN}PASS: Solana logrotate configuration found at $config_file${NC}"
     
     # Verify configuration has essential elements
     if grep -q "rotate" "$config_file"; then
-      output "  ${GREEN}PASS: Basic rotation settings verified${NC}"
+      echo -e "  ${GREEN}PASS: Basic rotation settings verified${NC}"
     else
-      output "  ${YELLOW}WARNING: Logrotate configuration may be incomplete${NC}"
-      output "  ${YELLOW}Recommended to include rotation period and size limits${NC}"
+      echo -e "  ${YELLOW}WARNING: Logrotate configuration may be incomplete${NC}"
+      echo -e "  ${YELLOW}Recommended to include rotation period and size limits${NC}"
     fi
     return 0
   elif [ "$solana_service_running" = true ]; then
-    output "  ${RED}FAIL: Solana service is running but no logrotate configuration found${NC}"
-    output "  ${YELLOW}Recommended: Create logrotate configuration at /etc/logrotate.d/sol${NC}"
+    echo -e "  ${RED}FAIL: Solana service is running but no logrotate configuration found${NC}"
+    echo -e "  ${YELLOW}Recommended: Create logrotate configuration at /etc/logrotate.d/sol${NC}"
     return 1
   else
-    output "  ${YELLOW}WARNING: No Solana logrotate configuration found${NC}"
-    output "  ${YELLOW}Note: This might be acceptable if Solana is not installed on this system${NC}"
+    echo -e "  ${YELLOW}WARNING: No Solana logrotate configuration found${NC}"
+    echo -e "  ${YELLOW}Note: This might be acceptable if Solana is not installed on this system${NC}"
     return 0  # No failure if Solana might not be installed
   fi
 }
@@ -779,18 +779,18 @@ if [ "$SKIP_SSH_CHECK" = false ]; then
     ((failures++))
   fi
 else
-  output "\n${YELLOW}=== SSH Security ===${NC}"
-  output "${BLUE}Checking SSH configuration... ${YELLOW}[SKIPPED]${NC}"
+  echo -e "\n${YELLOW}=== SSH Security ===${NC}"
+  echo -e "${BLUE}Checking SSH configuration... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check if unattended upgrades are disabled
 check_unattended_upgrades_disabled() {
-  output "\n${YELLOW}=== Automatic Updates ===${NC}"
-  output "${BLUE}Checking if unattended upgrades are disabled...${NC}"
+  echo -e "\n${YELLOW}=== Automatic Updates ===${NC}"
+  echo -e "${BLUE}Checking if unattended upgrades are disabled...${NC}"
   
   # Skip if not Ubuntu/Debian based
   if ! command -v apt &> /dev/null && [ ! -d "/etc/apt/apt.conf.d" ]; then
-    output "  ${YELLOW}WARNING: Not an apt-based system, skipping unattended-upgrades check${NC}"
+    echo -e "  ${YELLOW}WARNING: Not an apt-based system, skipping unattended-upgrades check${NC}"
     return 0
   fi
   
@@ -804,36 +804,36 @@ check_unattended_upgrades_disabled() {
     
     # Check if the unattended-upgrades package is installed
     if dpkg -l | grep -q unattended-upgrades; then
-      output "  ${YELLOW}NOTE: unattended-upgrades package is installed${NC}"
+      echo -e "  ${YELLOW}NOTE: unattended-upgrades package is installed${NC}"
       
       # Primary check: verify the service is disabled
       if systemctl is-active --quiet unattended-upgrades; then
         enabled=true
-        output "  ${RED}FAIL: unattended-upgrades service is active${NC}"
+        echo -e "  ${RED}FAIL: unattended-upgrades service is active${NC}"
       else
-        output "  ${GREEN}PASS: unattended-upgrades service is not active${NC}"
+        echo -e "  ${GREEN}PASS: unattended-upgrades service is not active${NC}"
       fi
       
       # Secondary check: verify the timers are disabled
       if systemctl is-enabled --quiet apt-daily.timer; then
         enabled=true
-        output "  ${RED}FAIL: apt-daily timer is enabled${NC}"
+        echo -e "  ${RED}FAIL: apt-daily timer is enabled${NC}"
       fi
       
       if systemctl is-enabled --quiet apt-daily-upgrade.timer; then
         enabled=true
-        output "  ${RED}FAIL: apt-daily-upgrade timer is enabled${NC}"
+        echo -e "  ${RED}FAIL: apt-daily-upgrade timer is enabled${NC}"
       fi
       
       # Configuration files are only checked for information, not for pass/fail
       if [ -f "/etc/apt/apt.conf.d/20auto-upgrades" ]; then
         if grep -q "APT::Periodic::Update-Package-Lists \"1\"" "/etc/apt/apt.conf.d/20auto-upgrades" ||
            grep -q "APT::Periodic::Unattended-Upgrade \"1\"" "/etc/apt/apt.conf.d/20auto-upgrades"; then
-          output "  ${YELLOW}NOTE: Config file 20auto-upgrades has automatic updates enabled${NC}"
+          echo -e "  ${YELLOW}NOTE: Config file 20auto-upgrades has automatic updates enabled${NC}"
         fi
       fi
     else
-      output "  ${GREEN}PASS: unattended-upgrades package is not installed${NC}"
+      echo -e "  ${GREEN}PASS: unattended-upgrades package is not installed${NC}"
     fi
   fi
   
@@ -841,11 +841,11 @@ check_unattended_upgrades_disabled() {
   if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null 2>/dev/null; then
     if systemctl is-active --quiet yum-cron; then
       enabled=true
-      output "  ${RED}FAIL: yum-cron service is active${NC}"
+      echo -e "  ${RED}FAIL: yum-cron service is active${NC}"
     fi
     
     if [ -f "/etc/yum/yum-cron.conf" ] && grep -q "apply_updates = yes" "/etc/yum/yum-cron.conf"; then
-      output "  ${YELLOW}NOTE: yum-cron is configured to automatically apply updates${NC}"
+      echo -e "  ${YELLOW}NOTE: yum-cron is configured to automatically apply updates${NC}"
     fi
   fi
   
@@ -853,27 +853,27 @@ check_unattended_upgrades_disabled() {
   if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null 2>/dev/null; then
     if systemctl is-active --quiet dnf-automatic.timer; then
       enabled=true
-      output "  ${RED}FAIL: dnf-automatic timer is active${NC}"
+      echo -e "  ${RED}FAIL: dnf-automatic timer is active${NC}"
     fi
     
     if [ -f "/etc/dnf/automatic.conf" ] && grep -q "apply_updates = yes" "/etc/dnf/automatic.conf"; then
-      output "  ${YELLOW}NOTE: dnf-automatic is configured to automatically apply updates${NC}"
+      echo -e "  ${YELLOW}NOTE: dnf-automatic is configured to automatically apply updates${NC}"
     fi
   fi
   
   # Display results
   if [ "$enabled" = false ]; then
     if [ "$apt_based" = true ]; then
-      output "  ${GREEN}PASS: Automatic update services are disabled${NC}"
+      echo -e "  ${GREEN}PASS: Automatic update services are disabled${NC}"
     fi
     return 0
   else
-    output "  ${RED}FAIL: Automatic update services are enabled${NC}"
-    output "  ${YELLOW}Recommended actions:${NC}"
-    output "  - For Ubuntu/Debian: 'systemctl disable --now unattended-upgrades'"
-    output "  - For Ubuntu/Debian: 'systemctl disable --now apt-daily.timer apt-daily-upgrade.timer'"
-    output "  - For RHEL/CentOS: 'systemctl disable --now yum-cron'"
-    output "  - For Fedora/newer RHEL: 'systemctl disable --now dnf-automatic.timer'"
+    echo -e "  ${RED}FAIL: Automatic update services are enabled${NC}"
+    echo -e "  ${YELLOW}Recommended actions:${NC}"
+    echo -e "  - For Ubuntu/Debian: 'systemctl disable --now unattended-upgrades'"
+    echo -e "  - For Ubuntu/Debian: 'systemctl disable --now apt-daily.timer apt-daily-upgrade.timer'"
+    echo -e "  - For RHEL/CentOS: 'systemctl disable --now yum-cron'"
+    echo -e "  - For Fedora/newer RHEL: 'systemctl disable --now dnf-automatic.timer'"
     return 1
   fi
 }
