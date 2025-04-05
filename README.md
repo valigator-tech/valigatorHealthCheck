@@ -21,6 +21,7 @@ The script verifies the following aspects of your system:
 - **System Updates**: Validates that there are no more than 5 package updates pending
 - **Time Synchronization**: Ensures some form of NTP time synchronization is active
 - **SSH Security**: Verifies SSH is configured securely with root login and password authentication disabled
+- **Log Management**: Checks for proper logrotate configuration for Solana services
 
 ## Usage
 

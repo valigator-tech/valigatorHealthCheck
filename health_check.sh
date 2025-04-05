@@ -685,6 +685,81 @@ if ! check_ntp_sync; then
   ((failures++))
 fi
 
+# Function to check logrotate configuration for Solana
+check_solana_logrotate() {
+  echo -e "\n${YELLOW}=== Log Management ===${NC}"
+  echo -e "${BLUE}Checking logrotate configuration for Solana...${NC}"
+  
+  # Define potential locations and patterns
+  local logrotate_dir="/etc/logrotate.d"
+  local solana_patterns=("sol" "solana" "solana-validator")
+  local found=false
+  local config_file=""
+  
+  # Check if logrotate is installed
+  if ! command -v logrotate &> /dev/null; then
+    echo -e "  ${RED}FAIL: logrotate is not installed${NC}"
+    return 1
+  fi
+  
+  # Check if logrotate.d directory exists
+  if [ ! -d "$logrotate_dir" ]; then
+    echo -e "  ${RED}FAIL: logrotate.d directory not found${NC}"
+    return 1
+  fi
+  
+  # Search for Solana-related logrotate configs in the standard location
+  for pattern in "${solana_patterns[@]}"; do
+    # Look for exact filenames
+    if [ -f "$logrotate_dir/$pattern" ]; then
+      found=true
+      config_file="$logrotate_dir/$pattern"
+      break
+    fi
+    
+    # Look for files containing the pattern
+    for file in "$logrotate_dir"/*; do
+      if [ -f "$file" ] && grep -q "$pattern" "$file"; then
+        found=true
+        config_file="$file"
+        break 2
+      fi
+    done
+  done
+  
+  # Check if a solana service is running, which would confirm we should have logrotate
+  solana_service_running=false
+  if command -v systemctl &> /dev/null; then
+    if systemctl is-active --quiet solana || systemctl is-active --quiet sol || systemctl is-active --quiet solana-validator; then
+      solana_service_running=true
+    fi
+  elif ps aux | grep -v grep | grep -E "solana|sol " &> /dev/null; then
+    solana_service_running=true
+  fi
+  
+  # Report findings
+  if [ "$found" = true ]; then
+    echo -e "  ${GREEN}PASS: Solana logrotate configuration found at $config_file${NC}"
+    
+    # Verify configuration has essential elements
+    if grep -q "rotate" "$config_file" && grep -q "compress" "$config_file"; then
+      echo -e "  ${GREEN}PASS: Basic rotation and compression settings verified${NC}"
+    else
+      echo -e "  ${YELLOW}WARNING: Logrotate configuration may be incomplete${NC}"
+      echo -e "  ${YELLOW}Recommended to include rotation period, compression, and size limits${NC}"
+    fi
+    return 0
+  elif [ "$solana_service_running" = true ]; then
+    echo -e "  ${RED}FAIL: Solana service is running but no logrotate configuration found${NC}"
+    echo -e "  ${YELLOW}Recommended: Create logrotate configuration at /etc/logrotate.d/sol${NC}"
+    return 1
+  else
+    echo -e "  ${YELLOW}WARNING: No Solana logrotate configuration found${NC}"
+    echo -e "  ${YELLOW}Note: This might be acceptable if Solana is not installed on this system${NC}"
+    return 0  # No failure if Solana might not be installed
+  fi
+}
+
 # Check SSH configuration (unless skipped)
 if [ "$SKIP_SSH_CHECK" = false ]; then
   if ! check_ssh_config; then
@@ -693,6 +768,11 @@ if [ "$SKIP_SSH_CHECK" = false ]; then
 else
   echo -e "\n${YELLOW}=== SSH Security ===${NC}"
   echo -e "${BLUE}Checking SSH configuration... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check Solana logrotate configuration
+if ! check_solana_logrotate; then
+  ((failures++))
 fi
 
 # Summary
