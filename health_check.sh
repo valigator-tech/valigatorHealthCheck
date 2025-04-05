@@ -122,6 +122,19 @@ check_sysctl() {
     fi
   fi
   
+  # Special case for vm.swappiness which should be 30 or lower
+  if [ "$param" = "vm.swappiness" ]; then
+    if [ "$current" -le 30 ]; then
+      echo -e "  ${GREEN}PASS: $param value is acceptable: $current (maximum allowed: 30)${NC}"
+      return 0
+    else
+      echo -e "  ${RED}FAIL: $param value is too high.${NC}"
+      echo -e "  Current value: ${YELLOW}$current${NC}"
+      echo -e "  Maximum allowed: ${GREEN}30${NC}"
+      return 1
+    fi
+  fi
+  
   # Special case for tcp_congestion_control if set to bbr
   if [ "$param" = "net.ipv4.tcp_congestion_control" ] && [ "$current" = "bbr" ]; then
     echo -e "  ${YELLOW}WARNING: $param is set to BBR instead of westwood${NC}"
@@ -443,8 +456,45 @@ check_package_updates() {
   fi
 }
 
+# Function to check if p-state driver is being used
+check_pstate_driver() {
+  echo -e "\n${YELLOW}=== CPU Driver ===${NC}"
+  echo -e "${BLUE}Checking CPU scaling driver...${NC}"
+  
+  # Check if CPU frequency scaling is available
+  if [ ! -d "/sys/devices/system/cpu/cpu0/cpufreq" ]; then
+    echo -e "  ${RED}FAIL: CPU frequency scaling is not available on this system.${NC}"
+    return 1
+  fi
+  
+  # Get the current scaling driver
+  driver_file="/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver"
+  if [ -f "$driver_file" ]; then
+    driver=$(cat "$driver_file")
+    
+    # Check if the driver contains "pstate"
+    if [[ "$driver" == *"pstate"* ]]; then
+      echo -e "  ${GREEN}PASS: CPU is using p-state driver: $driver${NC}"
+      return 0
+    else
+      echo -e "  ${RED}FAIL: CPU is not using p-state driver${NC}"
+      echo -e "  Current driver: ${YELLOW}$driver${NC}"
+      echo -e "  Expected: ${GREEN}intel_pstate or amd_pstate${NC}"
+      return 1
+    fi
+  else
+    echo -e "  ${RED}FAIL: Could not determine CPU scaling driver${NC}"
+    return 1
+  fi
+}
+
 # Check CPU boost status
 if ! check_cpu_boost; then
+  ((failures++))
+fi
+
+# Check CPU p-state driver
+if ! check_pstate_driver; then
   ((failures++))
 fi
 

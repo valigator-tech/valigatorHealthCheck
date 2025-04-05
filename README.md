@@ -15,6 +15,7 @@ The script verifies the following aspects of your system:
 - **Solana Specific Tuning**: Validates network buffer settings required for optimal Solana node performance
 - **CPU Governor Settings**: Ensures CPU cores are set to performance governor mode
 - **CPU Performance**: Verifies that CPU boost/turbo is enabled
+- **CPU Driver**: Ensures that the p-state CPU scaling driver is being used
 - **Memory Management**: Confirms swap is disabled
 - **Security Services**: Checks that fail2ban is installed, enabled, and running
 - **System Updates**: Validates that there are no more than 5 package updates pending
@@ -57,6 +58,7 @@ The script provides color-coded output for easy interpretation:
 
 - For TCP congestion control, the script expects "westwood" but will accept "bbr" with a warning
 - For kernel.pid_max, the script checks if the value is equal to or greater than the expected value
+- For vm.swappiness, the script accepts any value of 30 or lower
 - CPU boost check handles both Intel and AMD-specific boost mechanisms
 - NTP check supports multiple time synchronization methods (systemd-timesyncd, chronyd, ntpd, OpenNTPD)
 - Package update checker automatically detects apt, dnf, yum, pacman, or zypper package managers
