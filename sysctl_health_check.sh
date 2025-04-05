@@ -2,6 +2,13 @@
 
 # We don't want to exit immediately on error since we want to run all checks
 
+# Define colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 # Array of sysctl checks in format: "parameter expected_value"
 declare -A checks=(
   ["net.ipv4.tcp_rmem"]="10240 87380 12582912"
@@ -25,14 +32,14 @@ check_sysctl() {
   local normalized_expected
   local normalized_current
 
-  echo "Checking $param..."
+  echo -e "${BLUE}Checking $param...${NC}"
   
   # Get the current value
   current=$(sysctl -n "$param" 2>/dev/null)
   
   # Check if sysctl command was successful
   if [ $? -ne 0 ]; then
-    echo "ERROR: Could not retrieve $param value. This may not be a Linux system or you don't have permission."
+    echo -e "${RED}ERROR: Could not retrieve $param value. This may not be a Linux system or you don't have permission.${NC}"
     return 1
   fi
   
@@ -42,18 +49,18 @@ check_sysctl() {
   
   # Check if the normalized values match
   if [ "$normalized_current" != "$normalized_expected" ]; then
-    echo "  FAIL: $param value is incorrect."
-    echo "  Current value: $current"
-    echo "  Expected value: $expected"
+    echo -e "  ${RED}FAIL: $param value is incorrect.${NC}"
+    echo -e "  Current value: ${YELLOW}$current${NC}"
+    echo -e "  Expected value: ${GREEN}$expected${NC}"
     return 1
   else
-    echo "  PASS: $param value is correct: $current"
+    echo -e "  ${GREEN}PASS: $param value is correct: $current${NC}"
     return 0
   fi
 }
 
 # Run all checks
-echo "Starting sysctl health checks..."
+echo -e "${BLUE}Starting sysctl health checks...${NC}"
 for param in "${!checks[@]}"; do
   if ! check_sysctl "$param" "${checks[$param]}"; then
     ((failures++))
@@ -62,11 +69,11 @@ done
 
 # Summary
 echo ""
-echo "Health check complete."
+echo -e "${BLUE}Health check complete.${NC}"
 if [ $failures -eq 0 ]; then
-  echo "All checks passed successfully."
+  echo -e "${GREEN}All checks passed successfully.${NC}"
   exit 0
 else
-  echo "$failures check(s) failed."
+  echo -e "${RED}$failures check(s) failed.${NC}"
   exit 1
 fi
