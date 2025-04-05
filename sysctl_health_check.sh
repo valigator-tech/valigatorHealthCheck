@@ -226,8 +226,133 @@ if ! check_cpu_governor; then
   ((failures++))
 fi
 
+# Function to check if swap is disabled
+check_swap_disabled() {
+  echo -e "\n${YELLOW}=== Memory Management ===${NC}"
+  echo -e "${BLUE}Checking swap status...${NC}"
+  
+  # Get swap information using swapon command
+  if command -v swapon &> /dev/null; then
+    swap_info=$(swapon --show 2>/dev/null)
+    if [ -z "$swap_info" ]; then
+      swap_status="disabled"
+    else
+      swap_status="enabled"
+    fi
+  else
+    # Alternative method using /proc/swaps
+    if [ -f "/proc/swaps" ]; then
+      swap_count=$(grep -v "^Filename" /proc/swaps | wc -l)
+      if [ "$swap_count" -eq 0 ]; then
+        swap_status="disabled"
+      else
+        swap_status="enabled"
+      fi
+    else
+      echo -e "  ${RED}FAIL: Unable to determine swap status${NC}"
+      return 1
+    fi
+  fi
+  
+  # Check swap status
+  if [ "$swap_status" = "disabled" ]; then
+    echo -e "  ${GREEN}PASS: Swap is disabled${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: Swap is enabled${NC}"
+    echo -e "  Current status: Swap is ${RED}$swap_status${NC}"
+    echo -e "  Expected: Swap should be ${GREEN}disabled${NC}"
+    return 1
+  fi
+}
+
 # Check fail2ban service
 if ! check_fail2ban; then
+  ((failures++))
+fi
+
+# Function to check if CPU boost is enabled
+check_cpu_boost() {
+  echo -e "\n${YELLOW}=== CPU Performance ===${NC}"
+  echo -e "${BLUE}Checking CPU boost status...${NC}"
+  
+  local boost_path="/sys/devices/system/cpu/cpufreq/boost"
+  local intel_boost_path="/sys/devices/system/cpu/intel_pstate/no_turbo"
+  local amd_boost_path="/sys/devices/system/cpu/cpufreq/boost"
+  local boost_status=""
+  
+  # Check if any of the boost control files exist
+  if [ -f "$boost_path" ]; then
+    boost_value=$(cat "$boost_path")
+    if [ "$boost_value" -eq 1 ]; then
+      boost_status="enabled"
+    else
+      boost_status="disabled"
+    fi
+  elif [ -f "$intel_boost_path" ]; then
+    turbo_value=$(cat "$intel_boost_path")
+    if [ "$turbo_value" -eq 0 ]; then
+      boost_status="enabled"  # Intel: no_turbo=0 means boost is enabled
+    else
+      boost_status="disabled"
+    fi
+  elif [ -f "$amd_boost_path" ]; then
+    boost_value=$(cat "$amd_boost_path")
+    if [ "$boost_value" -eq 1 ]; then
+      boost_status="enabled"
+    else
+      boost_status="disabled"
+    fi
+  else
+    # Check individual CPU boosting
+    boost_files_found=false
+    all_boost_enabled=true
+    
+    for cpu_dir in /sys/devices/system/cpu/cpu*/cpufreq; do
+      boost_file="$cpu_dir/scaling_boost_freq"
+      
+      if [ -f "$boost_file" ]; then
+        boost_files_found=true
+        boost_freq=$(cat "$boost_file")
+        
+        if [ "$boost_freq" -eq 0 ]; then
+          all_boost_enabled=false
+          break
+        fi
+      fi
+    done
+    
+    if [ "$boost_files_found" = true ]; then
+      if [ "$all_boost_enabled" = true ]; then
+        boost_status="enabled"
+      else
+        boost_status="disabled"
+      fi
+    else
+      echo -e "  ${YELLOW}WARNING: Could not determine CPU boost status${NC}"
+      echo -e "  ${YELLOW}This might be due to the system not supporting CPU boost or using a different method${NC}"
+      return 0  # Don't count as failure since we can't determine for sure
+    fi
+  fi
+  
+  # Check boost status
+  if [ "$boost_status" = "enabled" ]; then
+    echo -e "  ${GREEN}PASS: CPU boost is enabled${NC}"
+    return 0
+  elif [ "$boost_status" = "disabled" ]; then
+    echo -e "  ${RED}FAIL: CPU boost is disabled${NC}"
+    echo -e "  Expected: ${GREEN}enabled${NC}"
+    return 1
+  fi
+}
+
+# Check swap status
+if ! check_swap_disabled; then
+  ((failures++))
+fi
+
+# Check CPU boost status
+if ! check_cpu_boost; then
   ((failures++))
 fi
 
