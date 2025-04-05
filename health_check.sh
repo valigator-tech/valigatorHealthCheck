@@ -770,8 +770,94 @@ else
   echo -e "${BLUE}Checking SSH configuration... ${YELLOW}[SKIPPED]${NC}"
 fi
 
+# Function to check if unattended upgrades are disabled
+check_unattended_upgrades_disabled() {
+  echo -e "\n${YELLOW}=== Automatic Updates ===${NC}"
+  echo -e "${BLUE}Checking if unattended upgrades are disabled...${NC}"
+  
+  # Skip if not Ubuntu/Debian based
+  if ! command -v apt &> /dev/null && [ ! -f "/etc/apt/apt.conf.d" ]; then
+    echo -e "  ${YELLOW}WARNING: Not an apt-based system, skipping unattended-upgrades check${NC}"
+    return 0
+  fi
+  
+  local enabled=false
+  local issues=0
+  
+  # Check if the unattended-upgrades package is installed
+  if dpkg -l | grep -q unattended-upgrades; then
+    # Check key configuration files
+    if [ -f "/etc/apt/apt.conf.d/20auto-upgrades" ]; then
+      if grep -q "APT::Periodic::Update-Package-Lists \"1\"" "/etc/apt/apt.conf.d/20auto-upgrades" ||
+         grep -q "APT::Periodic::Unattended-Upgrade \"1\"" "/etc/apt/apt.conf.d/20auto-upgrades"; then
+        enabled=true
+        ((issues++))
+      fi
+    fi
+    
+    if [ -f "/etc/apt/apt.conf.d/50unattended-upgrades" ]; then
+      if grep -q -v "^\/\/" "/etc/apt/apt.conf.d/50unattended-upgrades" | grep -q "Unattended-Upgrade::Allowed-Origins"; then
+        # Check if there are uncommented allowed origins
+        enabled=true
+        ((issues++))
+      fi
+    fi
+    
+    # Check if the service is active
+    if systemctl is-active --quiet unattended-upgrades; then
+      enabled=true
+      ((issues++))
+      echo -e "  ${RED}FAIL: unattended-upgrades service is active${NC}"
+    fi
+    
+    # Check if the apt-daily timers are enabled
+    if systemctl is-enabled --quiet apt-daily.timer || systemctl is-enabled --quiet apt-daily-upgrade.timer; then
+      enabled=true
+      ((issues++))
+      echo -e "  ${RED}FAIL: apt-daily timers are enabled${NC}"
+    fi
+  fi
+  
+  # Check for yum-cron on RHEL/CentOS/Fedora systems
+  if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null; then
+    if [ -f "/etc/yum/yum-cron.conf" ] && grep -q "apply_updates = yes" "/etc/yum/yum-cron.conf"; then
+      enabled=true
+      ((issues++))
+      echo -e "  ${RED}FAIL: yum-cron is configured to automatically apply updates${NC}"
+    fi
+  fi
+  
+  # Check for dnf-automatic on newer RHEL/Fedora systems
+  if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null; then
+    if [ -f "/etc/dnf/automatic.conf" ] && grep -q "apply_updates = yes" "/etc/dnf/automatic.conf"; then
+      enabled=true
+      ((issues++))
+      echo -e "  ${RED}FAIL: dnf-automatic is configured to automatically apply updates${NC}"
+    fi
+  fi
+  
+  # Display results
+  if [ "$enabled" = false ]; then
+    echo -e "  ${GREEN}PASS: Automatic updates are disabled${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: Automatic updates appear to be enabled${NC}"
+    echo -e "  ${YELLOW}Recommended actions:${NC}"
+    echo -e "  - For Ubuntu/Debian: 'apt remove unattended-upgrades'"
+    echo -e "  - For Ubuntu/Debian: Edit /etc/apt/apt.conf.d/20auto-upgrades and set Update-Package-Lists and Unattended-Upgrade to \"0\""
+    echo -e "  - For RHEL/CentOS: 'systemctl disable --now yum-cron' or edit /etc/yum/yum-cron.conf"
+    echo -e "  - For Fedora/newer RHEL: 'systemctl disable --now dnf-automatic.timer' or edit /etc/dnf/automatic.conf"
+    return 1
+  fi
+}
+
 # Check Solana logrotate configuration
 if ! check_solana_logrotate; then
+  ((failures++))
+fi
+
+# Check if unattended upgrades are disabled
+if ! check_unattended_upgrades_disabled; then
   ((failures++))
 fi
 
