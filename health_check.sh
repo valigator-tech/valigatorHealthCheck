@@ -883,8 +883,39 @@ if ! check_solana_logrotate; then
   ((failures++))
 fi
 
+# Function to check if Ubuntu needs a reboot
+check_reboot_required() {
+  echo -e "\n${YELLOW}=== System Reboot Status ===${NC}"
+  echo -e "${BLUE}Checking if system requires a reboot...${NC}"
+  
+  # Only proceed if this is an Ubuntu/Debian system
+  if ! command -v apt &> /dev/null; then
+    echo -e "  ${YELLOW}WARNING: Not an apt-based system, skipping reboot-required check${NC}"
+    return 0
+  fi
+  
+  # Check for the reboot-required file
+  if [ -f /var/run/reboot-required ]; then
+    echo -e "  ${RED}FAIL: System requires a reboot${NC}"
+    if [ -f /var/run/reboot-required.pkgs ]; then
+      echo -e "  ${YELLOW}Packages requiring reboot:${NC}"
+      cat /var/run/reboot-required.pkgs | sed 's/^/    /'
+    fi
+    echo -e "  ${YELLOW}Run 'sudo reboot' to apply all pending changes${NC}"
+    return 1
+  else
+    echo -e "  ${GREEN}PASS: System does not require a reboot${NC}"
+    return 0
+  fi
+}
+
 # Check if unattended upgrades are disabled
 if ! check_unattended_upgrades_disabled; then
+  ((failures++))
+fi
+
+# Check if system requires a reboot
+if ! check_reboot_required; then
   ((failures++))
 fi
 
