@@ -10,9 +10,6 @@ BLUE='\033[0;36m' # Changed to cyan (lighter blue)
 NC='\033[0m' # No Color
 
 # Parse command line arguments
-SKIP_FAIL2BAN=false
-SKIP_PACKAGE_UPDATES=false
-SKIP_SSH_CHECK=false
 QUIET_MODE=false
 CONFIG_FILE="./config.json"
 
@@ -20,18 +17,6 @@ CONFIG_FILE="./config.json"
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
-    --skip-fail2ban)
-      SKIP_FAIL2BAN=true
-      shift
-      ;;
-    --skip-package-updates)
-      SKIP_PACKAGE_UPDATES=true
-      shift
-      ;;
-    --skip-ssh-check)
-      SKIP_SSH_CHECK=true
-      shift
-      ;;
     -q|--quiet)
       QUIET_MODE=true
       shift
@@ -43,12 +28,11 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo "Options:"
-      echo "  --skip-fail2ban         Skip the fail2ban check"
-      echo "  --skip-package-updates  Skip the package updates check" 
-      echo "  --skip-ssh-check        Skip the SSH security configuration check"
       echo "  -q, --quiet             Suppress detailed output, only show final summary"
       echo "  -c, --config FILE       Use specified config file (default: ./config.json)"
       echo "  -h, --help              Display this help message and exit"
+      echo ""
+      echo "Note: Use the config.json file to enable/disable specific checks"
       exit 0
       ;;
     *)
@@ -127,7 +111,13 @@ get_config() {
   
   # Use grep to extract the specific config value to avoid jq errors
   local jq_result
-  if [[ "$key" == .systemChecks.* ]]; then
+  
+  # Handle check enabling/disabling
+  if [[ "$key" == .checksToRun.* ]]; then
+    # Extract the last part of the key (after the last dot)
+    local key_name=${key##*.}
+    jq_result=$(grep -A20 '"checksToRun":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*\([^",}]*\).*/\1/')
+  elif [[ "$key" == .systemChecks.* ]]; then
     # Extract the last part of the key (after the last dot)
     local key_name=${key##*.}
     
@@ -156,7 +146,24 @@ get_config() {
   if [ -z "$jq_result" ]; then
     echo "$default"
   else
+    # Clean up any trailing commas
+    jq_result=$(echo "$jq_result" | sed 's/,$//')
     echo "$jq_result"
+  fi
+}
+
+# Function to check if a specific check should be run
+should_run_check() {
+  local check_name="$1"
+  local result=$(get_config ".checksToRun.$check_name" "true")
+  
+  # Convert to lowercase for standardization
+  result=$(echo "$result" | tr '[:upper:]' '[:lower:]')
+  
+  if [ "$result" = "true" ] || [ "$result" = "yes" ] || [ "$result" = "1" ]; then
+    return 0  # True - should run
+  else
+    return 1  # False - should not run
   fi
 }
 
@@ -385,21 +392,26 @@ check_cpu_governor() {
 # Run all checks
 echo -e "${BLUE}Starting system health checks...${NC}"
 
-# Run sysctl checks by category
-for category in "${!check_categories[@]}"; do
-  echo -e "\n${YELLOW}=== $category ===${NC}"
-  
-  # Get all parameters in this category
-  params=(${check_categories[$category]})
-  
-  # Run each check in this category
-  for param in "${params[@]}"; do
-    if ! check_sysctl "$param" "${checks[$param]}"; then
-      ((failures++))
-      failed_checks+=("$category: $param")
-    fi
+# Run sysctl checks by category if enabled in config
+if should_run_check "sysctlParams"; then
+  for category in "${!check_categories[@]}"; do
+    echo -e "\n${YELLOW}=== $category ===${NC}"
+    
+    # Get all parameters in this category
+    params=(${check_categories[$category]})
+    
+    # Run each check in this category
+    for param in "${params[@]}"; do
+      if ! check_sysctl "$param" "${checks[$param]}"; then
+        ((failures++))
+        failed_checks+=("$category: $param")
+      fi
+    done
   done
-done
+else
+  echo -e "\n${YELLOW}=== Sysctl Parameters ===${NC}"
+  echo -e "${BLUE}Checking sysctl parameters... ${YELLOW}[SKIPPED]${NC}"
+fi
 
 # Function to check if fail2ban is enabled and running
 check_fail2ban() {
@@ -446,10 +458,15 @@ check_fail2ban() {
   fi
 }
 
-# Check CPU governor
-if ! check_cpu_governor; then
-  ((failures++))
-  failed_checks+=("CPU Governor Settings")
+# Check CPU governor if enabled in config
+if should_run_check "cpuGovernor"; then
+  if ! check_cpu_governor; then
+    ((failures++))
+    failed_checks+=("CPU Governor Settings")
+  fi
+else
+  echo -e "\n${YELLOW}=== CPU Governor Settings ===${NC}"
+  echo -e "${BLUE}Checking CPU governor mode... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check if swap is disabled
@@ -501,8 +518,8 @@ check_swap_disabled() {
   fi
 }
 
-# Check fail2ban service (unless skipped)
-if [ "$SKIP_FAIL2BAN" = false ]; then
+# Check fail2ban service if enabled in config
+if should_run_check "fail2ban"; then
   if ! check_fail2ban; then
     ((failures++))
     failed_checks+=("Security Services: fail2ban")
@@ -589,10 +606,15 @@ check_cpu_boost() {
   fi
 }
 
-# Check swap status
-if ! check_swap_disabled; then
-  ((failures++))
-  failed_checks+=("Memory Management: Swap Status")
+# Check swap status if enabled in config
+if should_run_check "swapStatus"; then
+  if ! check_swap_disabled; then
+    ((failures++))
+    failed_checks+=("Memory Management: Swap Status")
+  fi
+else
+  echo -e "\n${YELLOW}=== Memory Management ===${NC}"
+  echo -e "${BLUE}Checking swap status... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check for package updates
@@ -689,16 +711,26 @@ check_pstate_driver() {
   fi
 }
 
-# Check CPU boost status
-if ! check_cpu_boost; then
-  ((failures++))
-  failed_checks+=("CPU Performance: Boost Status")
+# Check CPU boost status if enabled in config
+if should_run_check "cpuBoost"; then
+  if ! check_cpu_boost; then
+    ((failures++))
+    failed_checks+=("CPU Performance: Boost Status")
+  fi
+else
+  echo -e "\n${YELLOW}=== CPU Performance ===${NC}"
+  echo -e "${BLUE}Checking CPU boost status... ${YELLOW}[SKIPPED]${NC}"
 fi
 
-# Check CPU p-state driver
-if ! check_pstate_driver; then
-  ((failures++))
-  failed_checks+=("CPU Driver: p-state")
+# Check CPU p-state driver if enabled in config
+if should_run_check "cpuDriver"; then
+  if ! check_pstate_driver; then
+    ((failures++))
+    failed_checks+=("CPU Driver: p-state")
+  fi
+else
+  echo -e "\n${YELLOW}=== CPU Driver ===${NC}"
+  echo -e "${BLUE}Checking CPU scaling driver... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check NTP synchronization status
@@ -770,8 +802,8 @@ check_ntp_sync() {
   fi
 }
 
-# Check package updates (unless skipped)
-if [ "$SKIP_PACKAGE_UPDATES" = false ]; then
+# Check package updates if enabled in config
+if should_run_check "packageUpdates"; then
   if ! check_package_updates; then
     ((failures++))
     failed_checks+=("System Updates: Package Updates")
@@ -853,10 +885,15 @@ check_ssh_config() {
   fi
 }
 
-# Check NTP synchronization
-if ! check_ntp_sync; then
-  ((failures++))
-  failed_checks+=("Time Synchronization: NTP")
+# Check NTP synchronization if enabled in config
+if should_run_check "ntpSync"; then
+  if ! check_ntp_sync; then
+    ((failures++))
+    failed_checks+=("Time Synchronization: NTP")
+  fi
+else
+  echo -e "\n${YELLOW}=== Time Synchronization ===${NC}"
+  echo -e "${BLUE}Checking NTP time sync status... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check logrotate configuration for Solana
@@ -934,8 +971,8 @@ check_solana_logrotate() {
   fi
 }
 
-# Check SSH configuration (unless skipped)
-if [ "$SKIP_SSH_CHECK" = false ]; then
+# Check SSH configuration if enabled in config
+if should_run_check "sshConfig"; then
   if ! check_ssh_config; then
     ((failures++))
     failed_checks+=("SSH Security: Configuration")
@@ -1095,10 +1132,15 @@ check_unattended_upgrades_disabled() {
   fi
 }
 
-# Check Solana logrotate configuration
-if ! check_solana_logrotate; then
-  ((failures++))
-  failed_checks+=("Log Management: Solana logrotate")
+# Check Solana logrotate configuration if enabled in config
+if should_run_check "solanaLogrotate"; then
+  if ! check_solana_logrotate; then
+    ((failures++))
+    failed_checks+=("Log Management: Solana logrotate")
+  fi
+else
+  echo -e "\n${YELLOW}=== Log Management ===${NC}"
+  echo -e "${BLUE}Checking logrotate configuration for Solana... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Function to check if Ubuntu needs a reboot
@@ -1127,16 +1169,26 @@ check_reboot_required() {
   fi
 }
 
-# Check if unattended upgrades are disabled
-if ! check_unattended_upgrades_disabled; then
-  ((failures++))
-  failed_checks+=("Automatic Updates: unattended-upgrades")
+# Check if unattended upgrades are disabled if enabled in config
+if should_run_check "unattendedUpgrades"; then
+  if ! check_unattended_upgrades_disabled; then
+    ((failures++))
+    failed_checks+=("Automatic Updates: unattended-upgrades")
+  fi
+else
+  echo -e "\n${YELLOW}=== Automatic Updates ===${NC}"
+  echo -e "${BLUE}Checking unattended upgrades status... ${YELLOW}[SKIPPED]${NC}"
 fi
 
-# Check if system requires a reboot
-if ! check_reboot_required; then
-  ((failures++))
-  failed_checks+=("System Reboot Status: reboot required")
+# Check if system requires a reboot if enabled in config
+if should_run_check "rebootStatus"; then
+  if ! check_reboot_required; then
+    ((failures++))
+    failed_checks+=("System Reboot Status: reboot required")
+  fi
+else
+  echo -e "\n${YELLOW}=== System Reboot Status ===${NC}"
+  echo -e "${BLUE}Checking if system requires a reboot... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Summary - Always show this part even in quiet mode

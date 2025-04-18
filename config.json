@@ -1,4 +1,18 @@
 {
+  "checksToRun": {
+    "sysctlParams": true,
+    "cpuGovernor": true,
+    "cpuBoost": true,
+    "cpuDriver": true, 
+    "swapStatus": true,
+    "packageUpdates": true,
+    "ntpSync": true,
+    "fail2ban": true,
+    "sshConfig": true,
+    "solanaLogrotate": true,
+    "unattendedUpgrades": true,
+    "rebootStatus": true
+  },
   "sysctlChecks": {
     "TCP Buffer Sizes": {
       "net.ipv4.tcp_rmem": "10240 87380 12582912",

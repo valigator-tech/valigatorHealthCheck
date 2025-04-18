@@ -31,22 +31,8 @@ The script verifies the following aspects of your system:
 # Basic usage (requires root/sudo)
 sudo ./health_check.sh
 
-# Skip the fail2ban check
-sudo ./health_check.sh --skip-fail2ban
-
-# Skip the package updates check
-sudo ./health_check.sh --skip-package-updates 
-
-# Skip the SSH security configuration check
-sudo ./health_check.sh --skip-ssh-check
-
-# Skip multiple checks
-sudo ./health_check.sh --skip-fail2ban --skip-package-updates --skip-ssh-check
-
 # Quiet mode (only show final results)
 sudo ./health_check.sh --quiet
-
-# Quiet mode with short flag
 sudo ./health_check.sh -q
 
 # Use a custom configuration file
@@ -58,7 +44,7 @@ sudo ./health_check.sh --config /path/to/custom-config.json
 
 ## Configuration
 
-The script uses a JSON configuration file (`config.json` by default) that contains all the expected values for the checks. This allows you to customize the expected settings without modifying the script.
+The script uses a JSON configuration file (`config.json` by default) that contains all the expected values for the checks and allows enabling/disabling specific checks. This allows you to customize the script behavior without modifying the script itself.
 
 You can specify a custom configuration file with the `-c` or `--config` option:
 
@@ -72,6 +58,20 @@ The configuration file is structured as follows:
 
 ```json
 {
+  "checksToRun": {
+    "sysctlParams": true,
+    "cpuGovernor": true,
+    "cpuBoost": true,
+    "cpuDriver": true, 
+    "swapStatus": true,
+    "packageUpdates": true,
+    "ntpSync": true,
+    "fail2ban": true,
+    "sshConfig": true,
+    "solanaLogrotate": true,
+    "unattendedUpgrades": true,
+    "rebootStatus": true
+  },
   "sysctlChecks": {
     "Category Name": {
       "sysctl.parameter": "expected value"
@@ -110,7 +110,38 @@ The configuration file is structured as follows:
 }
 ```
 
-You can modify any of these values to match your specific system requirements.
+### Disabling Specific Checks
+
+To disable specific checks, set their values to `false` in the `checksToRun` section:
+
+```json
+"checksToRun": {
+  "sysctlParams": true,  
+  "cpuGovernor": true,
+  "cpuBoost": true,
+  "cpuDriver": false,    # This check will be skipped
+  "swapStatus": true,
+  "packageUpdates": false, # This check will be skipped
+  "ntpSync": true,
+  "fail2ban": false,     # This check will be skipped
+  "sshConfig": true,
+  "solanaLogrotate": true,
+  "unattendedUpgrades": true,
+  "rebootStatus": true
+}
+```
+
+### Customizing Expected Values
+
+You can also modify any of the expected values in the `sysctlChecks` and `systemChecks` sections to match your specific system requirements. For example:
+
+```json
+"cpu": {
+  "governor": "powersave",  # Changed from "performance"
+  "boost": "disabled",      # Changed from "enabled"
+  "driver": "pstate"
+}
+```
 
 ## Requirements
 
