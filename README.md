@@ -49,9 +49,68 @@ sudo ./health_check.sh --quiet
 # Quiet mode with short flag
 sudo ./health_check.sh -q
 
+# Use a custom configuration file
+sudo ./health_check.sh --config /path/to/custom-config.json
+
 # Display help
 ./health_check.sh --help
 ```
+
+## Configuration
+
+The script uses a JSON configuration file (`config.json` by default) that contains all the expected values for the checks. This allows you to customize the expected settings without modifying the script.
+
+You can specify a custom configuration file with the `-c` or `--config` option:
+
+```bash
+sudo ./health_check.sh --config /path/to/custom-config.json
+```
+
+### Configuration File Format
+
+The configuration file is structured as follows:
+
+```json
+{
+  "sysctlChecks": {
+    "Category Name": {
+      "sysctl.parameter": "expected value"
+    }
+  },
+  "systemChecks": {
+    "cpu": {
+      "governor": "performance",
+      "boost": "enabled",
+      "driver": "pstate"
+    },
+    "security": {
+      "fail2ban": {
+        "enabled": true,
+        "running": true
+      },
+      "ssh": {
+        "rootLogin": "no",
+        "passwordAuth": "no"
+      }
+    },
+    "updates": {
+      "maxPendingUpdates": 5,
+      "unattendedUpgrades": false
+    },
+    "memory": {
+      "swapEnabled": false
+    },
+    "time": {
+      "ntpEnabled": true
+    },
+    "logs": {
+      "solanaLogrotate": true
+    }
+  }
+}
+```
+
+You can modify any of these values to match your specific system requirements.
 
 ## Requirements
 

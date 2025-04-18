@@ -14,6 +14,7 @@ SKIP_FAIL2BAN=false
 SKIP_PACKAGE_UPDATES=false
 SKIP_SSH_CHECK=false
 QUIET_MODE=false
+CONFIG_FILE="./config.json"
 
 # Parse command line options
 while [[ $# -gt 0 ]]; do
@@ -35,6 +36,10 @@ while [[ $# -gt 0 ]]; do
       QUIET_MODE=true
       shift
       ;;
+    -c|--config)
+      CONFIG_FILE="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo "Options:"
@@ -42,6 +47,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --skip-package-updates  Skip the package updates check" 
       echo "  --skip-ssh-check        Skip the SSH security configuration check"
       echo "  -q, --quiet             Suppress detailed output, only show final summary"
+      echo "  -c, --config FILE       Use specified config file (default: ./config.json)"
       echo "  -h, --help              Display this help message and exit"
       exit 0
       ;;
@@ -53,6 +59,22 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Check if the config file exists
+if [ ! -f "$CONFIG_FILE" ]; then
+  echo -e "${RED}Error: Config file not found: $CONFIG_FILE${NC}"
+  echo "Please specify a valid config file with --config option or create the default config.json"
+  exit 1
+fi
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+  echo -e "${RED}Error: jq is not installed. Please install jq to parse the config file.${NC}"
+  echo "On Debian/Ubuntu: sudo apt-get install jq"
+  echo "On CentOS/RHEL: sudo yum install jq"
+  echo "On Fedora: sudo dnf install jq"
+  exit 1
+fi
+
 # If quiet mode is enabled, redirect all output to /dev/null
 # But save the original stdout first to restore it for the summary
 if [ "$QUIET_MODE" = true ]; then
@@ -60,46 +82,52 @@ if [ "$QUIET_MODE" = true ]; then
   exec 1>/dev/null 2>/dev/null
 fi
 
-# Organize checks by category
-declare -A check_categories=(
-  ["TCP Buffer Sizes"]="net.ipv4.tcp_rmem net.ipv4.tcp_wmem"
-  ["TCP Optimization"]="net.ipv4.tcp_congestion_control net.ipv4.tcp_fastopen net.ipv4.tcp_timestamps net.ipv4.tcp_sack net.ipv4.tcp_low_latency net.ipv4.tcp_tw_reuse net.ipv4.tcp_no_metrics_save net.ipv4.tcp_moderate_rcvbuf"
-  ["Kernel Optimization"]="kernel.timer_migration kernel.hung_task_timeout_secs kernel.pid_max"
-  ["Virtual Memory Tuning"]="vm.swappiness vm.max_map_count vm.stat_interval vm.dirty_ratio vm.dirty_background_ratio vm.min_free_kbytes vm.dirty_expire_centisecs vm.dirty_writeback_centisecs vm.dirtytime_expire_seconds"
-  ["Solana Specific Tuning"]="net.core.rmem_max net.core.rmem_default net.core.wmem_max net.core.wmem_default"
-  # Add more categories here in the future
-)
+# Function to get a value from the config
+get_config() {
+  local key="$1"
+  local default="$2"
+  
+  value=$(jq -r "$key" "$CONFIG_FILE" 2>/dev/null)
+  
+  # If the value is null or empty, use the default
+  if [ "$value" = "null" ] || [ -z "$value" ]; then
+    echo "$default"
+  else
+    echo "$value"
+  fi
+}
 
-# Array of sysctl checks in format: "parameter expected_value"
-declare -A checks=(
-  ["net.ipv4.tcp_rmem"]="10240 87380 12582912"
-  ["net.ipv4.tcp_wmem"]="10240 87380 12582912"
-  ["net.ipv4.tcp_congestion_control"]="westwood"
-  ["net.ipv4.tcp_fastopen"]="3"
-  ["net.ipv4.tcp_timestamps"]="0"
-  ["net.ipv4.tcp_sack"]="1"
-  ["net.ipv4.tcp_low_latency"]="1"
-  ["net.ipv4.tcp_tw_reuse"]="1"
-  ["net.ipv4.tcp_no_metrics_save"]="1"
-  ["net.ipv4.tcp_moderate_rcvbuf"]="1"
-  ["kernel.timer_migration"]="0"
-  ["kernel.hung_task_timeout_secs"]="30"
-  ["kernel.pid_max"]="49152"
-  ["vm.swappiness"]="30"
-  ["vm.max_map_count"]="2000000"
-  ["vm.stat_interval"]="10"
-  ["vm.dirty_ratio"]="40"
-  ["vm.dirty_background_ratio"]="10"
-  ["vm.min_free_kbytes"]="3000000"
-  ["vm.dirty_expire_centisecs"]="36000"
-  ["vm.dirty_writeback_centisecs"]="3000"
-  ["vm.dirtytime_expire_seconds"]="43200"
-  ["net.core.rmem_max"]="134217728"
-  ["net.core.rmem_default"]="134217728"
-  ["net.core.wmem_max"]="134217728"
-  ["net.core.wmem_default"]="134217728"
-  # Add more checks here in the future
-)
+# Load configuration into check categories and checks
+load_config() {
+  echo -e "${BLUE}Loading configuration from: $CONFIG_FILE${NC}"
+  
+  # Clear existing check categories and checks
+  declare -g -A check_categories=()
+  declare -g -A checks=()
+  
+  # Get all category names
+  categories=$(jq -r '.sysctlChecks | keys[]' "$CONFIG_FILE")
+  
+  # Populate check_categories and checks
+  for category in $categories; do
+    # Get parameters for this category
+    params=$(jq -r ".sysctlChecks[\"$category\"] | keys | join(\" \")" "$CONFIG_FILE")
+    check_categories["$category"]="$params"
+    
+    # Get values for each parameter
+    for param in $params; do
+      value=$(jq -r ".sysctlChecks[\"$category\"][\"$param\"]" "$CONFIG_FILE")
+      checks["$param"]="$value"
+    done
+  done
+}
+
+# Define empty check arrays, which will be populated from config
+declare -A check_categories
+declare -A checks
+
+# Load configuration from JSON file
+load_config
 
 # Counter for failures and array to track failed check names
 failures=0
@@ -182,7 +210,7 @@ check_sysctl() {
 
 # Function to check CPU governor mode
 check_cpu_governor() {
-  local expected="performance"
+  local expected=$(get_config '.systemChecks.cpu.governor' "performance")
   local mismatched_cpus=()
   local busy_cpus=()
   local total_cpus=0
@@ -329,6 +357,15 @@ fi
 
 # Function to check if swap is disabled
 check_swap_disabled() {
+  local swap_should_be_enabled=$(get_config '.systemChecks.memory.swapEnabled' "false")
+  local expected_status
+  
+  if [ "$swap_should_be_enabled" = "true" ]; then
+    expected_status="enabled"
+  else
+    expected_status="disabled"
+  fi
+  
   echo -e "\n${YELLOW}=== Memory Management ===${NC}"
   echo -e "${BLUE}Checking swap status...${NC}"
   
@@ -355,14 +392,14 @@ check_swap_disabled() {
     fi
   fi
   
-  # Check swap status
-  if [ "$swap_status" = "disabled" ]; then
-    echo -e "  ${GREEN}PASS: Swap is disabled${NC}"
+  # Check swap status against expected value
+  if [ "$swap_status" = "$expected_status" ]; then
+    echo -e "  ${GREEN}PASS: Swap is $swap_status${NC}"
     return 0
   else
-    echo -e "  ${RED}FAIL: Swap is enabled${NC}"
+    echo -e "  ${RED}FAIL: Swap is $swap_status${NC}"
     echo -e "  Current status: Swap is ${RED}$swap_status${NC}"
-    echo -e "  Expected: Swap should be ${GREEN}disabled${NC}"
+    echo -e "  Expected: Swap should be ${GREEN}$expected_status${NC}"
     return 1
   fi
 }
@@ -380,6 +417,8 @@ fi
 
 # Function to check if CPU boost is enabled
 check_cpu_boost() {
+  local expected_status=$(get_config '.systemChecks.cpu.boost' "enabled")
+  
   echo -e "\n${YELLOW}=== CPU Performance ===${NC}"
   echo -e "${BLUE}Checking CPU boost status...${NC}"
   
@@ -442,13 +481,13 @@ check_cpu_boost() {
     fi
   fi
   
-  # Check boost status
-  if [ "$boost_status" = "enabled" ]; then
-    echo -e "  ${GREEN}PASS: CPU boost is enabled${NC}"
+  # Check boost status against configuration
+  if [ "$boost_status" = "$expected_status" ]; then
+    echo -e "  ${GREEN}PASS: CPU boost is $boost_status${NC}"
     return 0
-  elif [ "$boost_status" = "disabled" ]; then
-    echo -e "  ${RED}FAIL: CPU boost is disabled${NC}"
-    echo -e "  Expected: ${GREEN}enabled${NC}"
+  else
+    echo -e "  ${RED}FAIL: CPU boost is $boost_status${NC}"
+    echo -e "  Expected: ${GREEN}$expected_status${NC}"
     return 1
   fi
 }
@@ -464,7 +503,7 @@ check_package_updates() {
   echo -e "\n${YELLOW}=== System Updates ===${NC}"
   echo -e "${BLUE}Checking pending package updates...${NC}"
   
-  local max_allowed_updates=5
+  local max_allowed_updates=$(get_config '.systemChecks.updates.maxPendingUpdates' "5")
   local update_count=0
   local pkgmanager=""
   
@@ -507,6 +546,8 @@ check_package_updates() {
 
 # Function to check if p-state driver is being used
 check_pstate_driver() {
+  local expected_driver=$(get_config '.systemChecks.cpu.driver' "pstate")
+  
   echo -e "\n${YELLOW}=== CPU Driver ===${NC}"
   echo -e "${BLUE}Checking CPU scaling driver...${NC}"
   
@@ -521,15 +562,29 @@ check_pstate_driver() {
   if [ -f "$driver_file" ]; then
     driver=$(cat "$driver_file")
     
-    # Check if the driver contains "pstate"
-    if [[ "$driver" == *"pstate"* ]]; then
-      echo -e "  ${GREEN}PASS: CPU is using p-state driver: $driver${NC}"
-      return 0
+    # Check if the driver matches the expected one
+    # Special case for pstate which can be intel_pstate or amd_pstate
+    if [ "$expected_driver" = "pstate" ]; then
+      if [[ "$driver" == *"pstate"* ]]; then
+        echo -e "  ${GREEN}PASS: CPU is using p-state driver: $driver${NC}"
+        return 0
+      else
+        echo -e "  ${RED}FAIL: CPU is not using p-state driver${NC}"
+        echo -e "  Current driver: ${YELLOW}$driver${NC}"
+        echo -e "  Expected: ${GREEN}intel_pstate or amd_pstate${NC}"
+        return 1
+      fi
     else
-      echo -e "  ${RED}FAIL: CPU is not using p-state driver${NC}"
-      echo -e "  Current driver: ${YELLOW}$driver${NC}"
-      echo -e "  Expected: ${GREEN}intel_pstate or amd_pstate${NC}"
-      return 1
+      # Direct driver name comparison
+      if [ "$driver" = "$expected_driver" ]; then
+        echo -e "  ${GREEN}PASS: CPU is using expected driver: $driver${NC}"
+        return 0
+      else
+        echo -e "  ${RED}FAIL: CPU is not using expected driver${NC}"
+        echo -e "  Current driver: ${YELLOW}$driver${NC}"
+        echo -e "  Expected: ${GREEN}$expected_driver${NC}"
+        return 1
+      fi
     fi
   else
     echo -e "  ${RED}FAIL: Could not determine CPU scaling driver${NC}"
@@ -793,10 +848,19 @@ else
   echo -e "${BLUE}Checking SSH configuration... ${YELLOW}[SKIPPED]${NC}"
 fi
 
-# Function to check if unattended upgrades are disabled
+# Function to check if unattended upgrades are disabled or enabled based on config
 check_unattended_upgrades_disabled() {
+  local unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")
+  local expected_status
+  
+  if [ "$unattended_upgrades_allowed" = "true" ]; then
+    expected_status="enabled"
+  else
+    expected_status="disabled"
+  fi
+  
   echo -e "\n${YELLOW}=== Automatic Updates ===${NC}"
-  echo -e "${BLUE}Checking if unattended upgrades are disabled...${NC}"
+  echo -e "${BLUE}Checking unattended upgrades status...${NC}"
   
   # Skip if not Ubuntu/Debian based
   if ! command -v apt &> /dev/null && [ ! -d "/etc/apt/apt.conf.d" ]; then
@@ -816,34 +880,55 @@ check_unattended_upgrades_disabled() {
     if dpkg -l | grep -q unattended-upgrades; then
       echo -e "  ${YELLOW}NOTE: unattended-upgrades package is installed${NC}"
       
-      # Primary check: verify the service is disabled
+      # Primary check: verify the service status
       if systemctl is-active --quiet unattended-upgrades; then
         enabled=true
-        echo -e "  ${RED}FAIL: unattended-upgrades service is active${NC}"
+        if [ "$expected_status" = "enabled" ]; then
+          echo -e "  ${GREEN}PASS: unattended-upgrades service is active as expected${NC}"
+        else
+          echo -e "  ${RED}FAIL: unattended-upgrades service is active, should be disabled${NC}"
+        fi
       else
-        echo -e "  ${GREEN}PASS: unattended-upgrades service is not active${NC}"
+        if [ "$expected_status" = "disabled" ]; then
+          echo -e "  ${GREEN}PASS: unattended-upgrades service is not active as expected${NC}"
+        else
+          echo -e "  ${RED}FAIL: unattended-upgrades service is not active, should be enabled${NC}"
+        fi
       fi
       
-      # Secondary check: verify the timers are disabled
+      # Secondary check: verify the timers status
       if systemctl is-enabled --quiet apt-daily.timer; then
         enabled=true
-        echo -e "  ${RED}FAIL: apt-daily timer is enabled${NC}"
+        if [ "$expected_status" = "disabled" ]; then
+          echo -e "  ${RED}FAIL: apt-daily timer is enabled, should be disabled${NC}"
+        fi
+      elif [ "$expected_status" = "enabled" ]; then
+        echo -e "  ${RED}FAIL: apt-daily timer is disabled, should be enabled${NC}"
       fi
       
       if systemctl is-enabled --quiet apt-daily-upgrade.timer; then
         enabled=true
-        echo -e "  ${RED}FAIL: apt-daily-upgrade timer is enabled${NC}"
+        if [ "$expected_status" = "disabled" ]; then
+          echo -e "  ${RED}FAIL: apt-daily-upgrade timer is enabled, should be disabled${NC}"
+        fi
+      elif [ "$expected_status" = "enabled" ]; then
+        echo -e "  ${RED}FAIL: apt-daily-upgrade timer is disabled, should be enabled${NC}"
       fi
       
       # Configuration files are only checked for information, not for pass/fail
       if [ -f "/etc/apt/apt.conf.d/20auto-upgrades" ]; then
         if grep -q "APT::Periodic::Update-Package-Lists \"1\"" "/etc/apt/apt.conf.d/20auto-upgrades" ||
            grep -q "APT::Periodic::Unattended-Upgrade \"1\"" "/etc/apt/apt.conf.d/20auto-upgrades"; then
-          echo -e "  ${YELLOW}NOTE: Config file 20auto-upgrades has automatic updates enabled${NC}"
+          echo -e "  ${YELLOW}NOTE: Config file 20auto-upgrades has automatic updates configured${NC}"
         fi
       fi
     else
-      echo -e "  ${GREEN}PASS: unattended-upgrades package is not installed${NC}"
+      if [ "$expected_status" = "disabled" ]; then
+        echo -e "  ${GREEN}PASS: unattended-upgrades package is not installed as expected${NC}"
+      else
+        echo -e "  ${RED}FAIL: unattended-upgrades package is not installed, but should be${NC}"
+        return 1
+      fi
     fi
   fi
   
@@ -851,7 +936,13 @@ check_unattended_upgrades_disabled() {
   if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null 2>/dev/null; then
     if systemctl is-active --quiet yum-cron; then
       enabled=true
-      echo -e "  ${RED}FAIL: yum-cron service is active${NC}"
+      if [ "$expected_status" = "disabled" ]; then
+        echo -e "  ${RED}FAIL: yum-cron service is active, should be disabled${NC}"
+      else
+        echo -e "  ${GREEN}PASS: yum-cron service is active as expected${NC}"
+      fi
+    elif [ "$expected_status" = "enabled" ]; then
+      echo -e "  ${RED}FAIL: yum-cron service is not active, should be enabled${NC}"
     fi
     
     if [ -f "/etc/yum/yum-cron.conf" ] && grep -q "apply_updates = yes" "/etc/yum/yum-cron.conf"; then
@@ -863,7 +954,13 @@ check_unattended_upgrades_disabled() {
   if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null 2>/dev/null; then
     if systemctl is-active --quiet dnf-automatic.timer; then
       enabled=true
-      echo -e "  ${RED}FAIL: dnf-automatic timer is active${NC}"
+      if [ "$expected_status" = "disabled" ]; then
+        echo -e "  ${RED}FAIL: dnf-automatic timer is active, should be disabled${NC}"
+      else
+        echo -e "  ${GREEN}PASS: dnf-automatic timer is active as expected${NC}"
+      fi
+    elif [ "$expected_status" = "enabled" ]; then
+      echo -e "  ${RED}FAIL: dnf-automatic timer is not active, should be enabled${NC}"
     fi
     
     if [ -f "/etc/dnf/automatic.conf" ] && grep -q "apply_updates = yes" "/etc/dnf/automatic.conf"; then
@@ -872,18 +969,31 @@ check_unattended_upgrades_disabled() {
   fi
   
   # Display results
-  if [ "$enabled" = false ]; then
+  if ([ "$enabled" = true ] && [ "$expected_status" = "enabled" ]) || 
+     ([ "$enabled" = false ] && [ "$expected_status" = "disabled" ]); then
     if [ "$apt_based" = true ]; then
-      echo -e "  ${GREEN}PASS: Automatic update services are disabled${NC}"
+      echo -e "  ${GREEN}PASS: Automatic update services are in expected state: $expected_status${NC}"
     fi
     return 0
   else
-    echo -e "  ${RED}FAIL: Automatic update services are enabled${NC}"
-    echo -e "  ${YELLOW}Recommended actions:${NC}"
-    echo -e "  - For Ubuntu/Debian: 'systemctl disable --now unattended-upgrades'"
-    echo -e "  - For Ubuntu/Debian: 'systemctl disable --now apt-daily.timer apt-daily-upgrade.timer'"
-    echo -e "  - For RHEL/CentOS: 'systemctl disable --now yum-cron'"
-    echo -e "  - For Fedora/newer RHEL: 'systemctl disable --now dnf-automatic.timer'"
+    echo -e "  ${RED}FAIL: Automatic update services are not in expected state${NC}"
+    echo -e "  Current status: ${RED}$([ "$enabled" = true ] && echo 'enabled' || echo 'disabled')${NC}"
+    echo -e "  Expected status: ${GREEN}$expected_status${NC}"
+    
+    if [ "$expected_status" = "disabled" ]; then
+      echo -e "  ${YELLOW}To disable automatic updates:${NC}"
+      echo -e "  - For Ubuntu/Debian: 'systemctl disable --now unattended-upgrades'"
+      echo -e "  - For Ubuntu/Debian: 'systemctl disable --now apt-daily.timer apt-daily-upgrade.timer'"
+      echo -e "  - For RHEL/CentOS: 'systemctl disable --now yum-cron'"
+      echo -e "  - For Fedora/newer RHEL: 'systemctl disable --now dnf-automatic.timer'"
+    else
+      echo -e "  ${YELLOW}To enable automatic updates:${NC}"
+      echo -e "  - For Ubuntu/Debian: 'apt install unattended-upgrades && systemctl enable --now unattended-upgrades'"
+      echo -e "  - For Ubuntu/Debian: 'systemctl enable --now apt-daily.timer apt-daily-upgrade.timer'"
+      echo -e "  - For RHEL/CentOS: 'yum install yum-cron && systemctl enable --now yum-cron'"
+      echo -e "  - For Fedora/newer RHEL: 'dnf install dnf-automatic && systemctl enable --now dnf-automatic.timer'"
+    fi
+    
     return 1
   fi
 }
