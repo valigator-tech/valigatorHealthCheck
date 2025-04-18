@@ -101,8 +101,9 @@ declare -A checks=(
   # Add more checks here in the future
 )
 
-# Counter for failures
+# Counter for failures and array to track failed check names
 failures=0
+failed_checks=()
 
 # Function to normalize whitespace in a string
 normalize_whitespace() {
@@ -270,6 +271,7 @@ for category in "${!check_categories[@]}"; do
   for param in "${params[@]}"; do
     if ! check_sysctl "$param" "${checks[$param]}"; then
       ((failures++))
+      failed_checks+=("$category: $param")
     fi
   done
 done
@@ -322,6 +324,7 @@ check_fail2ban() {
 # Check CPU governor
 if ! check_cpu_governor; then
   ((failures++))
+  failed_checks+=("CPU Governor Settings")
 fi
 
 # Function to check if swap is disabled
@@ -368,6 +371,7 @@ check_swap_disabled() {
 if [ "$SKIP_FAIL2BAN" = false ]; then
   if ! check_fail2ban; then
     ((failures++))
+    failed_checks+=("Security Services: fail2ban")
   fi
 else
   echo -e "\n${YELLOW}=== Security Services ===${NC}"
@@ -452,6 +456,7 @@ check_cpu_boost() {
 # Check swap status
 if ! check_swap_disabled; then
   ((failures++))
+  failed_checks+=("Memory Management: Swap Status")
 fi
 
 # Function to check for package updates
@@ -535,11 +540,13 @@ check_pstate_driver() {
 # Check CPU boost status
 if ! check_cpu_boost; then
   ((failures++))
+  failed_checks+=("CPU Performance: Boost Status")
 fi
 
 # Check CPU p-state driver
 if ! check_pstate_driver; then
   ((failures++))
+  failed_checks+=("CPU Driver: p-state")
 fi
 
 # Function to check NTP synchronization status
@@ -615,6 +622,7 @@ check_ntp_sync() {
 if [ "$SKIP_PACKAGE_UPDATES" = false ]; then
   if ! check_package_updates; then
     ((failures++))
+    failed_checks+=("System Updates: Package Updates")
   fi
 else
   echo -e "\n${YELLOW}=== System Updates ===${NC}"
@@ -696,6 +704,7 @@ check_ssh_config() {
 # Check NTP synchronization
 if ! check_ntp_sync; then
   ((failures++))
+  failed_checks+=("Time Synchronization: NTP")
 fi
 
 # Function to check logrotate configuration for Solana
@@ -777,6 +786,7 @@ check_solana_logrotate() {
 if [ "$SKIP_SSH_CHECK" = false ]; then
   if ! check_ssh_config; then
     ((failures++))
+    failed_checks+=("SSH Security: Configuration")
   fi
 else
   echo -e "\n${YELLOW}=== SSH Security ===${NC}"
@@ -881,6 +891,7 @@ check_unattended_upgrades_disabled() {
 # Check Solana logrotate configuration
 if ! check_solana_logrotate; then
   ((failures++))
+  failed_checks+=("Log Management: Solana logrotate")
 fi
 
 # Function to check if Ubuntu needs a reboot
@@ -912,11 +923,13 @@ check_reboot_required() {
 # Check if unattended upgrades are disabled
 if ! check_unattended_upgrades_disabled; then
   ((failures++))
+  failed_checks+=("Automatic Updates: unattended-upgrades")
 fi
 
 # Check if system requires a reboot
 if ! check_reboot_required; then
   ((failures++))
+  failed_checks+=("System Reboot Status: reboot required")
 fi
 
 # Summary - Always show this part even in quiet mode
@@ -932,5 +945,11 @@ if [ $failures -eq 0 ]; then
   exit 0
 else
   echo -e "${RED}$failures check(s) failed.${NC}"
+  
+  # Print summary of failing checks
+  echo -e "${YELLOW}Failed checks:${NC}"
+  for check in "${failed_checks[@]}"; do
+    echo -e "  ${RED}✗${NC} $check"
+  done
   exit 1
 fi
