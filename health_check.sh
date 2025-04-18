@@ -87,7 +87,7 @@ get_config() {
   local key="$1"
   local default="$2"
   
-  value=$(jq -r "$key" "$CONFIG_FILE" 2>/dev/null)
+  value=$(jq -e -r "$key" "$CONFIG_FILE" 2>/dev/null) || true
   
   # If the value is null or empty, use the default
   if [ "$value" = "null" ] || [ -z "$value" ]; then
@@ -105,20 +105,67 @@ load_config() {
   declare -g -A check_categories=()
   declare -g -A checks=()
   
+  # Check if sysctlChecks exists in the config file
+  if ! jq -e '.sysctlChecks' "$CONFIG_FILE" > /dev/null 2>&1; then
+    echo -e "${RED}Error: sysctlChecks section not found in config file${NC}"
+    echo -e "${YELLOW}Falling back to default checks${NC}"
+    # Initialize with default categories
+    check_categories["TCP Buffer Sizes"]="net.ipv4.tcp_rmem net.ipv4.tcp_wmem"
+    check_categories["TCP Optimization"]="net.ipv4.tcp_congestion_control net.ipv4.tcp_fastopen net.ipv4.tcp_timestamps net.ipv4.tcp_sack net.ipv4.tcp_low_latency net.ipv4.tcp_tw_reuse net.ipv4.tcp_no_metrics_save net.ipv4.tcp_moderate_rcvbuf"
+    check_categories["Kernel Optimization"]="kernel.timer_migration kernel.hung_task_timeout_secs kernel.pid_max"
+    check_categories["Virtual Memory Tuning"]="vm.swappiness vm.max_map_count vm.stat_interval vm.dirty_ratio vm.dirty_background_ratio vm.min_free_kbytes vm.dirty_expire_centisecs vm.dirty_writeback_centisecs vm.dirtytime_expire_seconds"
+    check_categories["Solana Specific Tuning"]="net.core.rmem_max net.core.rmem_default net.core.wmem_max net.core.wmem_default"
+    
+    # Initialize with default values
+    checks["net.ipv4.tcp_rmem"]="10240 87380 12582912"
+    checks["net.ipv4.tcp_wmem"]="10240 87380 12582912"
+    checks["net.ipv4.tcp_congestion_control"]="westwood"
+    checks["net.ipv4.tcp_fastopen"]="3"
+    checks["net.ipv4.tcp_timestamps"]="0"
+    checks["net.ipv4.tcp_sack"]="1"
+    checks["net.ipv4.tcp_low_latency"]="1"
+    checks["net.ipv4.tcp_tw_reuse"]="1"
+    checks["net.ipv4.tcp_no_metrics_save"]="1"
+    checks["net.ipv4.tcp_moderate_rcvbuf"]="1"
+    checks["kernel.timer_migration"]="0"
+    checks["kernel.hung_task_timeout_secs"]="30"
+    checks["kernel.pid_max"]="49152"
+    checks["vm.swappiness"]="30"
+    checks["vm.max_map_count"]="2000000"
+    checks["vm.stat_interval"]="10"
+    checks["vm.dirty_ratio"]="40"
+    checks["vm.dirty_background_ratio"]="10"
+    checks["vm.min_free_kbytes"]="3000000"
+    checks["vm.dirty_expire_centisecs"]="36000"
+    checks["vm.dirty_writeback_centisecs"]="3000"
+    checks["vm.dirtytime_expire_seconds"]="43200"
+    checks["net.core.rmem_max"]="134217728"
+    checks["net.core.rmem_default"]="134217728"
+    checks["net.core.wmem_max"]="134217728"
+    checks["net.core.wmem_default"]="134217728"
+    return
+  fi
+  
   # Get all category names
   categories=$(jq -r '.sysctlChecks | keys[]' "$CONFIG_FILE")
   
   # Populate check_categories and checks
   for category in $categories; do
-    # Get parameters for this category
-    params=$(jq -r ".sysctlChecks[\"$category\"] | keys | join(\" \")" "$CONFIG_FILE")
-    check_categories["$category"]="$params"
+    # Get parameters for this category using the escaped category name
+    escaped_category=$(printf '%s' "$category" | sed 's/\([^a-zA-Z0-9_]\)/\\\1/g')
+    params=$(jq -r ".sysctlChecks[\"$escaped_category\"] | keys[]" "$CONFIG_FILE" | tr '\n' ' ')
     
-    # Get values for each parameter
-    for param in $params; do
-      value=$(jq -r ".sysctlChecks[\"$category\"][\"$param\"]" "$CONFIG_FILE")
-      checks["$param"]="$value"
-    done
+    if [ -n "$params" ]; then
+      check_categories["$category"]="$params"
+      
+      # Get values for each parameter
+      for param in $params; do
+        value=$(jq -r ".sysctlChecks[\"$escaped_category\"][\"$param\"]" "$CONFIG_FILE")
+        if [ "$value" != "null" ]; then
+          checks["$param"]="$value"
+        fi
+      done
+    fi
   done
 }
 
