@@ -82,18 +82,81 @@ if [ "$QUIET_MODE" = true ]; then
   exec 1>/dev/null 2>/dev/null
 fi
 
+# Load default configuration values
+load_defaults() {
+  # Initialize with default categories
+  check_categories["TCP Buffer Sizes"]="net.ipv4.tcp_rmem net.ipv4.tcp_wmem"
+  check_categories["TCP Optimization"]="net.ipv4.tcp_congestion_control net.ipv4.tcp_fastopen net.ipv4.tcp_timestamps net.ipv4.tcp_sack net.ipv4.tcp_low_latency net.ipv4.tcp_tw_reuse net.ipv4.tcp_no_metrics_save net.ipv4.tcp_moderate_rcvbuf"
+  check_categories["Kernel Optimization"]="kernel.timer_migration kernel.hung_task_timeout_secs kernel.pid_max"
+  check_categories["Virtual Memory Tuning"]="vm.swappiness vm.max_map_count vm.stat_interval vm.dirty_ratio vm.dirty_background_ratio vm.min_free_kbytes vm.dirty_expire_centisecs vm.dirty_writeback_centisecs vm.dirtytime_expire_seconds"
+  check_categories["Solana Specific Tuning"]="net.core.rmem_max net.core.rmem_default net.core.wmem_max net.core.wmem_default"
+  
+  # Initialize with default values
+  checks["net.ipv4.tcp_rmem"]="10240 87380 12582912"
+  checks["net.ipv4.tcp_wmem"]="10240 87380 12582912"
+  checks["net.ipv4.tcp_congestion_control"]="westwood"
+  checks["net.ipv4.tcp_fastopen"]="3"
+  checks["net.ipv4.tcp_timestamps"]="0"
+  checks["net.ipv4.tcp_sack"]="1"
+  checks["net.ipv4.tcp_low_latency"]="1"
+  checks["net.ipv4.tcp_tw_reuse"]="1"
+  checks["net.ipv4.tcp_no_metrics_save"]="1"
+  checks["net.ipv4.tcp_moderate_rcvbuf"]="1"
+  checks["kernel.timer_migration"]="0"
+  checks["kernel.hung_task_timeout_secs"]="30"
+  checks["kernel.pid_max"]="49152"
+  checks["vm.swappiness"]="30"
+  checks["vm.max_map_count"]="2000000"
+  checks["vm.stat_interval"]="10"
+  checks["vm.dirty_ratio"]="40"
+  checks["vm.dirty_background_ratio"]="10"
+  checks["vm.min_free_kbytes"]="3000000"
+  checks["vm.dirty_expire_centisecs"]="36000"
+  checks["vm.dirty_writeback_centisecs"]="3000"
+  checks["vm.dirtytime_expire_seconds"]="43200"
+  checks["net.core.rmem_max"]="134217728"
+  checks["net.core.rmem_default"]="134217728"
+  checks["net.core.wmem_max"]="134217728"
+  checks["net.core.wmem_default"]="134217728"
+}
+
 # Function to get a value from the config
 get_config() {
   local key="$1"
   local default="$2"
   
-  value=$(jq -e -r "$key" "$CONFIG_FILE" 2>/dev/null) || true
+  # Use grep to extract the specific config value to avoid jq errors
+  local jq_result
+  if [[ "$key" == .systemChecks.* ]]; then
+    # Extract the last part of the key (after the last dot)
+    local key_name=${key##*.}
+    
+    # Special case for nested objects
+    case "$key" in
+      .systemChecks.cpu.*)
+        jq_result=$(grep -A10 '"cpu":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
+      .systemChecks.security.*)
+        jq_result=$(grep -A20 '"security":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
+      .systemChecks.updates.*)
+        jq_result=$(grep -A10 '"updates":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
+      .systemChecks.memory.*)
+        jq_result=$(grep -A10 '"memory":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
+      .systemChecks.time.*)
+        jq_result=$(grep -A10 '"time":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
+      .systemChecks.logs.*)
+        jq_result=$(grep -A10 '"logs":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*"\{0,1\}\([^",]*\)"\{0,1\}.*/\1/') ;;
+      *)
+        jq_result="" ;;
+    esac
+  else
+    jq_result=""
+  fi
   
   # If the value is null or empty, use the default
-  if [ "$value" = "null" ] || [ -z "$value" ]; then
+  if [ -z "$jq_result" ]; then
     echo "$default"
   else
-    echo "$value"
+    echo "$jq_result"
   fi
 }
 
@@ -105,66 +168,53 @@ load_config() {
   declare -g -A check_categories=()
   declare -g -A checks=()
   
-  # Check if sysctlChecks exists in the config file
-  if ! jq -e '.sysctlChecks' "$CONFIG_FILE" > /dev/null 2>&1; then
-    echo -e "${RED}Error: sysctlChecks section not found in config file${NC}"
+  # Check if the config file exists and is readable
+  if [ ! -f "$CONFIG_FILE" ] || [ ! -r "$CONFIG_FILE" ]; then
+    echo -e "${RED}Error: Config file not found or not readable: $CONFIG_FILE${NC}"
     echo -e "${YELLOW}Falling back to default checks${NC}"
-    # Initialize with default categories
-    check_categories["TCP Buffer Sizes"]="net.ipv4.tcp_rmem net.ipv4.tcp_wmem"
-    check_categories["TCP Optimization"]="net.ipv4.tcp_congestion_control net.ipv4.tcp_fastopen net.ipv4.tcp_timestamps net.ipv4.tcp_sack net.ipv4.tcp_low_latency net.ipv4.tcp_tw_reuse net.ipv4.tcp_no_metrics_save net.ipv4.tcp_moderate_rcvbuf"
-    check_categories["Kernel Optimization"]="kernel.timer_migration kernel.hung_task_timeout_secs kernel.pid_max"
-    check_categories["Virtual Memory Tuning"]="vm.swappiness vm.max_map_count vm.stat_interval vm.dirty_ratio vm.dirty_background_ratio vm.min_free_kbytes vm.dirty_expire_centisecs vm.dirty_writeback_centisecs vm.dirtytime_expire_seconds"
-    check_categories["Solana Specific Tuning"]="net.core.rmem_max net.core.rmem_default net.core.wmem_max net.core.wmem_default"
-    
-    # Initialize with default values
-    checks["net.ipv4.tcp_rmem"]="10240 87380 12582912"
-    checks["net.ipv4.tcp_wmem"]="10240 87380 12582912"
-    checks["net.ipv4.tcp_congestion_control"]="westwood"
-    checks["net.ipv4.tcp_fastopen"]="3"
-    checks["net.ipv4.tcp_timestamps"]="0"
-    checks["net.ipv4.tcp_sack"]="1"
-    checks["net.ipv4.tcp_low_latency"]="1"
-    checks["net.ipv4.tcp_tw_reuse"]="1"
-    checks["net.ipv4.tcp_no_metrics_save"]="1"
-    checks["net.ipv4.tcp_moderate_rcvbuf"]="1"
-    checks["kernel.timer_migration"]="0"
-    checks["kernel.hung_task_timeout_secs"]="30"
-    checks["kernel.pid_max"]="49152"
-    checks["vm.swappiness"]="30"
-    checks["vm.max_map_count"]="2000000"
-    checks["vm.stat_interval"]="10"
-    checks["vm.dirty_ratio"]="40"
-    checks["vm.dirty_background_ratio"]="10"
-    checks["vm.min_free_kbytes"]="3000000"
-    checks["vm.dirty_expire_centisecs"]="36000"
-    checks["vm.dirty_writeback_centisecs"]="3000"
-    checks["vm.dirtytime_expire_seconds"]="43200"
-    checks["net.core.rmem_max"]="134217728"
-    checks["net.core.rmem_default"]="134217728"
-    checks["net.core.wmem_max"]="134217728"
-    checks["net.core.wmem_default"]="134217728"
+    load_defaults
     return
   fi
   
-  # Get all category names
-  categories=$(jq -r '.sysctlChecks | keys[]' "$CONFIG_FILE")
+  # Check if it looks like a valid JSON file
+  if ! grep -q "sysctlChecks" "$CONFIG_FILE"; then
+    echo -e "${RED}Error: Invalid config file format (missing sysctlChecks)${NC}"
+    echo -e "${YELLOW}Falling back to default checks${NC}"
+    load_defaults
+    return
+  fi
   
-  # Populate check_categories and checks
+  # Load defaults first, then override with config file values
+  load_defaults
+  
+  # Using grep-based parsing instead of jq to avoid errors
+  # Extract and process categories
+  categories=$(grep -o '"[^"]*":' "$CONFIG_FILE" | grep -v "sysctlChecks\|systemChecks" | sed 's/"//g' | sed 's/://g')
+  
   for category in $categories; do
-    # Get parameters for this category using the escaped category name
-    escaped_category=$(printf '%s' "$category" | sed 's/\([^a-zA-Z0-9_]\)/\\\1/g')
-    params=$(jq -r ".sysctlChecks[\"$escaped_category\"] | keys[]" "$CONFIG_FILE" | tr '\n' ' ')
+    # Get the section for this category
+    category_section=$(grep -A30 "\"$category\":" "$CONFIG_FILE" | grep -B30 -m1 "}," | grep -v "},")
     
-    if [ -n "$params" ]; then
-      check_categories["$category"]="$params"
-      
-      # Get values for each parameter
-      for param in $params; do
-        value=$(jq -r ".sysctlChecks[\"$escaped_category\"][\"$param\"]" "$CONFIG_FILE")
-        if [ "$value" != "null" ]; then
-          checks["$param"]="$value"
+    # Extract parameters for this category
+    params=""
+    while read -r line; do
+      if [[ "$line" =~ \"([^\"]+)\" ]]; then
+        param="${BASH_REMATCH[1]}"
+        if [[ "$param" == net.* || "$param" == kernel.* || "$param" == vm.* ]]; then
+          params="$params $param"
+          
+          # Extract the value
+          if [[ "$line" =~ :\ *\"([^\"]*)\" ]]; then
+            value="${BASH_REMATCH[1]}"
+            checks["$param"]="$value"
+          fi
         fi
-      done
+      fi
+    done <<< "$category_section"
+    
+    # Only add to check_categories if we found parameters
+    if [ -n "$params" ]; then
+      check_categories["$category"]="${params# }"  # Remove leading space
     fi
   done
 }
