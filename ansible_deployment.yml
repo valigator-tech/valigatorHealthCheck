@@ -1,0 +1,56 @@
+---
+- name: Deploy valigatorHealthCheck
+  hosts: all
+  become: yes
+  vars:
+    repo_url: https://github.com/yourusername/valigatorHealthCheck.git
+    repo_dir: /opt/valigatorHealthCheck
+    check_script: health_check.sh
+
+  tasks:
+    - name: Install required packages
+      package:
+        name:
+          - git
+          - bash
+        state: present
+
+    - name: Create directory for repository
+      file:
+        path: "{{ repo_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Clone repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dir }}"
+        version: main
+        update: yes
+        force: yes
+
+    - name: Make scripts executable
+      file:
+        path: "{{ repo_dir }}/{{ item }}"
+        mode: '0755'
+      loop:
+        - "{{ check_script }}"
+        - "jito_ping_test.sh"
+
+    - name: Copy config.json (only if doesn't exist)
+      copy:
+        src: "{{ repo_dir }}/config.json"
+        dest: "/etc/valigator_config.json"
+        mode: '0644'
+        remote_src: yes
+        force: no
+
+    - name: Run health check
+      command: "{{ repo_dir }}/{{ check_script }} --config /etc/valigator_config.json"
+      register: health_check_result
+      failed_when: false
+      changed_when: false
+
+    - name: Show health check result
+      debug:
+        var: health_check_result.stdout_lines
