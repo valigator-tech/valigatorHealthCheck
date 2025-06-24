@@ -14,7 +14,7 @@
     "ntpSync": true,
     "sshConfig": true,
     "solanaLogrotate": true,
-    "unattendedUpgrades": false,
+    "unattendedUpgrades": true,
     "rebootStatus": true
   },
   "systemChecks": {
