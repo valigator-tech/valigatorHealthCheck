@@ -21,7 +21,7 @@
     "cpu": {
       "governor": "performance",
       "boost": "enabled",
-      "driver": "amd-pstate"
+      "driver": "amd-pstate-epp"
     },
     "memory": {
       "swapEnabled": false
