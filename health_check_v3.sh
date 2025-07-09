@@ -1257,18 +1257,30 @@ check_nic_ring_buffers() {
     # Check if values are at maximum
     local nic_ok=true
     
-    if [ -n "$rx_max" ] && [ -n "$rx_current" ] && [ "$rx_current" != "$rx_max" ]; then
-      echo -e "  ${RED}FAIL: $nic_name RX ring buffer not at maximum${NC}"
-      echo -e "    Current: $rx_current, Maximum: $rx_max"
-      nic_ok=false
-      ((issues++))
+    if [ -n "$rx_max" ] && [ -n "$rx_current" ]; then
+      # Clean values to remove any whitespace  
+      rx_max_clean=$(echo "$rx_max" | tr -d '[:space:]')
+      rx_current_clean=$(echo "$rx_current" | tr -d '[:space:]')
+      
+      # Use numeric comparison
+      if [ "$rx_current_clean" -lt "$rx_max_clean" ] 2>/dev/null; then
+        echo -e "  ${RED}FAIL: $nic_name RX ring buffer not at maximum${NC}"
+        echo -e "    Current: $rx_current_clean, Maximum: $rx_max_clean"
+        nic_ok=false
+        ((issues++))
+      fi
     fi
     
     # Only check TX if we have valid values
     if [ -n "$tx_max" ] && [ -n "$tx_current" ]; then
-      if [ "$tx_current" != "$tx_max" ]; then
+      # Clean values to remove any whitespace
+      tx_max_clean=$(echo "$tx_max" | tr -d '[:space:]')
+      tx_current_clean=$(echo "$tx_current" | tr -d '[:space:]')
+      
+      # Use numeric comparison
+      if [ "$tx_current_clean" -lt "$tx_max_clean" ] 2>/dev/null; then
         echo -e "  ${RED}FAIL: $nic_name TX ring buffer not at maximum${NC}"
-        echo -e "    Current: $tx_current, Maximum: $tx_max"
+        echo -e "    Current: $tx_current_clean, Maximum: $tx_max_clean"
         nic_ok=false
         ((issues++))
       fi
