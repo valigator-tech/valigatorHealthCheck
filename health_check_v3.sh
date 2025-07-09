@@ -1232,11 +1232,27 @@ check_nic_ring_buffers() {
       continue
     fi
     
-    # Parse current and maximum values
-    rx_max=$(echo "$ring_info" | grep -A1 "Pre-set maximums:" | grep "RX:" | awk '{print $2}')
-    rx_current=$(echo "$ring_info" | grep -A1 "Current hardware settings:" | grep "RX:" | awk '{print $2}')
-    tx_max=$(echo "$ring_info" | grep -A1 "Pre-set maximums:" | grep "TX:" | awk '{print $2}')
-    tx_current=$(echo "$ring_info" | grep -A1 "Current hardware settings:" | grep "TX:" | awk '{print $2}')
+    # Parse current and maximum values - handle different ethtool output formats
+    rx_max=$(echo "$ring_info" | grep -A1 "Pre-set maximums:" | grep -E "(RX|Rx):" | awk '{print $2}')
+    rx_current=$(echo "$ring_info" | grep -A1 "Current hardware settings:" | grep -E "(RX|Rx):" | awk '{print $2}')
+    
+    # Try multiple patterns for TX values as different drivers use different formats
+    tx_max=$(echo "$ring_info" | grep -A1 "Pre-set maximums:" | grep -E "(TX|Tx):" | awk '{print $2}')
+    tx_current=$(echo "$ring_info" | grep -A1 "Current hardware settings:" | grep -E "(TX|Tx):" | awk '{print $2}')
+    
+    # Some drivers might not separate RX/TX, try alternative parsing
+    if [ -z "$tx_max" ] || [ -z "$tx_current" ]; then
+      # Try parsing TX from the same line as RX or different section
+      tx_max=$(echo "$ring_info" | grep -A5 "Pre-set maximums:" | grep -E "(TX|Tx)" | awk '{print $2}')
+      tx_current=$(echo "$ring_info" | grep -A5 "Current hardware settings:" | grep -E "(TX|Tx)" | awk '{print $2}')
+    fi
+    
+    # If still empty, some drivers might use different terminology
+    if [ -z "$tx_max" ] || [ -z "$tx_current" ]; then
+      # Try to find TX in the raw output with different patterns
+      tx_max=$(echo "$ring_info" | grep -i "tx.*max" | awk '{print $NF}' | grep -E '^[0-9]+$')
+      tx_current=$(echo "$ring_info" | grep -i "tx.*current" | awk '{print $NF}' | grep -E '^[0-9]+$')
+    fi
     
     # Check if values are at maximum
     local nic_ok=true
@@ -1248,15 +1264,26 @@ check_nic_ring_buffers() {
       ((issues++))
     fi
     
-    if [ -n "$tx_max" ] && [ -n "$tx_current" ] && [ "$tx_current" != "$tx_max" ]; then
-      echo -e "  ${RED}FAIL: $nic_name TX ring buffer not at maximum${NC}"
-      echo -e "    Current: $tx_current, Maximum: $tx_max"
-      nic_ok=false
-      ((issues++))
+    # Only check TX if we have valid values
+    if [ -n "$tx_max" ] && [ -n "$tx_current" ]; then
+      if [ "$tx_current" != "$tx_max" ]; then
+        echo -e "  ${RED}FAIL: $nic_name TX ring buffer not at maximum${NC}"
+        echo -e "    Current: $tx_current, Maximum: $tx_max"
+        nic_ok=false
+        ((issues++))
+      fi
+    elif [ -n "$tx_max" ] || [ -n "$tx_current" ]; then
+      # Partial TX info available but incomplete
+      echo -e "  ${YELLOW}WARNING: $nic_name TX ring buffer info partially available${NC}"
     fi
     
     if [ "$nic_ok" = true ]; then
-      echo -e "  ${GREEN}PASS: $nic_name ring buffers are at maximum (RX: $rx_current, TX: $tx_current)${NC}"
+      if [ -n "$tx_current" ]; then
+        echo -e "  ${GREEN}PASS: $nic_name ring buffers are at maximum (RX: $rx_current, TX: $tx_current)${NC}"
+      else
+        echo -e "  ${GREEN}PASS: $nic_name RX ring buffer is at maximum (RX: $rx_current)${NC}"
+        echo -e "  ${YELLOW}NOTE: $nic_name TX ring buffer info not available from driver${NC}"
+      fi
     fi
   done
   
