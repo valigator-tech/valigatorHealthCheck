@@ -1191,29 +1191,6 @@ else
   echo -e "${BLUE}Checking if system requires a reboot... ${YELLOW}[SKIPPED]${NC}"
 fi
 
-# Summary - Always show this part even in quiet mode
-if [ "$QUIET_MODE" = true ]; then
-  # Restore stdout for the summary
-  exec 1>&3
-fi
-
-echo ""
-echo -e "${BLUE}Health check complete.${NC}"
-if [ $failures -eq 0 ]; then
-  echo -e "${GREEN}All checks passed successfully.${NC}"
-  exit 0
-else
-  echo -e "${RED}$failures check(s) failed.${NC}"
-  
-  # Print summary of failing checks
-  echo -e "${YELLOW}Failed checks:${NC}"
-  for check in "${failed_checks[@]}"; do
-    echo -e "  ${RED}✗${NC} $check"
-  done
-  exit 1
-fi
-
-
 # Function to check NIC ring buffer sizes
 check_nic_ring_buffers() {
   echo -e "\n${YELLOW}=== Network Interface Ring Buffers ===${NC}"
@@ -1341,28 +1318,6 @@ check_ethtool_service() {
     return 1
   fi
 }
-
-# Check NIC ring buffers if enabled in config
-if should_run_check "nicRingBuffers"; then
-  if ! check_nic_ring_buffers; then
-    ((failures++))
-    failed_checks+=("Network Interface Ring Buffers")
-  fi
-else
-  echo -e "\n${YELLOW}=== Network Interface Ring Buffers ===${NC}"
-  echo -e "${BLUE}Checking NIC ring buffer sizes... ${YELLOW}[SKIPPED]${NC}"
-fi
-
-# Check ethtool-ring-buffers service if enabled in config
-if should_run_check "ethtoolService"; then
-  if ! check_ethtool_service; then
-    ((failures++))
-    failed_checks+=("Network Services: ethtool-ring-buffers.service")
-  fi
-else
-  echo -e "\n${YELLOW}=== Network Services ===${NC}"
-  echo -e "${BLUE}Checking ethtool-ring-buffers.service... ${YELLOW}[SKIPPED]${NC}"
-fi
 
 # Function to check if C-states are disabled
 check_cstates_disabled() {
@@ -1504,6 +1459,28 @@ check_cpu_power_limits() {
   fi
 }
 
+# Check NIC ring buffers if enabled in config
+if should_run_check "nicRingBuffers"; then
+  if ! check_nic_ring_buffers; then
+    ((failures++))
+    failed_checks+=("Network Interface Ring Buffers")
+  fi
+else
+  echo -e "\n${YELLOW}=== Network Interface Ring Buffers ===${NC}"
+  echo -e "${BLUE}Checking NIC ring buffer sizes... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check ethtool-ring-buffers service if enabled in config
+if should_run_check "ethtoolService"; then
+  if ! check_ethtool_service; then
+    ((failures++))
+    failed_checks+=("Network Services: ethtool-ring-buffers.service")
+  fi
+else
+  echo -e "\n${YELLOW}=== Network Services ===${NC}"
+  echo -e "${BLUE}Checking ethtool-ring-buffers.service... ${YELLOW}[SKIPPED]${NC}"
+fi
+
 # Check C-states if enabled in config
 if should_run_check "cstatesDisabled"; then
   if ! check_cstates_disabled; then
@@ -1546,5 +1523,27 @@ if should_run_check "cpuPowerLimits"; then
 else
   echo -e "\n${YELLOW}=== CPU Power Limits ===${NC}"
   echo -e "${BLUE}Checking CPU power limit configuration... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Summary - Always show this part even in quiet mode
+if [ "$QUIET_MODE" = true ]; then
+  # Restore stdout for the summary
+  exec 1>&3
+fi
+
+echo ""
+echo -e "${BLUE}Health check complete.${NC}"
+if [ $failures -eq 0 ]; then
+  echo -e "${GREEN}All checks passed successfully.${NC}"
+  exit 0
+else
+  echo -e "${RED}$failures check(s) failed.${NC}"
+  
+  # Print summary of failing checks
+  echo -e "${YELLOW}Failed checks:${NC}"
+  for check in "${failed_checks[@]}"; do
+    echo -e "  ${RED}✗${NC} $check"
+  done
+  exit 1
 fi
 
