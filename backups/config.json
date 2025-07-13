@@ -3,46 +3,15 @@
     "sysctlParams": true,
     "cpuGovernor": true,
     "cpuBoost": true,
-    "cpuDriver": true,
-    "cstatesDisabled": true,
-    "amdPstateEpp": true,
-    "isolatedCpus": true,
-    "cpuPowerLimits": true,
-    "fail2ban": true,
+    "cpuDriver": true, 
     "swapStatus": true,
     "packageUpdates": true,
     "ntpSync": true,
+    "fail2ban": true,
     "sshConfig": true,
     "solanaLogrotate": true,
     "unattendedUpgrades": true,
-    "rebootStatus": true,
-    "nicRingBuffers": true,
-    "ethtoolService": true
-  },
-  "systemChecks": {
-    "cpu": {
-      "governor": "performance",
-      "boost": "enabled",
-      "driver": "amd-pstate-epp"
-    },
-    "memory": {
-      "swapEnabled": false
-    },
-    "security": {
-      "fail2banEnabled": true,
-      "sshRootLogin": "no",
-      "sshPasswordAuth": "no"
-    },
-    "updates": {
-      "maxPendingUpdates": 5,
-      "unattendedUpgrades": false
-    },
-    "time": {
-      "ntpEnabled": true
-    },
-    "logs": {
-      "solanaLogrotate": true
-    }
+    "rebootStatus": true
   },
   "sysctlChecks": {
     "TCP Buffer Sizes": {
@@ -80,6 +49,36 @@
       "net.core.rmem_default": "134217728",
       "net.core.wmem_max": "134217728",
       "net.core.wmem_default": "134217728"
+    }
+  },
+  "systemChecks": {
+    "cpu": {
+      "governor": "performance",
+      "boost": "enabled",
+      "driver": "pstate"
+    },
+    "security": {
+      "fail2ban": {
+        "enabled": true,
+        "running": true
+      },
+      "ssh": {
+        "rootLogin": "no",
+        "passwordAuth": "no"
+      }
+    },
+    "updates": {
+      "maxPendingUpdates": 5,
+      "unattendedUpgrades": false
+    },
+    "memory": {
+      "swapEnabled": false
+    },
+    "time": {
+      "ntpEnabled": true
+    },
+    "logs": {
+      "solanaLogrotate": true
     }
   }
 }

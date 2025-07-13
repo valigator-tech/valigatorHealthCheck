@@ -1191,6 +1191,458 @@ else
   echo -e "${BLUE}Checking if system requires a reboot... ${YELLOW}[SKIPPED]${NC}"
 fi
 
+# Function to check NIC ring buffer sizes
+check_nic_ring_buffers() {
+  echo -e "\n${YELLOW}=== Network Interface Ring Buffers ===${NC}"
+  echo -e "${BLUE}Checking NIC ring buffer sizes...${NC}"
+  
+  local issues=0
+  local total_nics=0
+  
+  # Check if ethtool is available
+  if ! command -v ethtool &> /dev/null; then
+    echo -e "  ${RED}FAIL: ethtool is not installed${NC}"
+    echo -e "  ${YELLOW}Install with: apt-get install ethtool (Debian/Ubuntu) or yum install ethtool (RHEL/CentOS)${NC}"
+    return 1
+  fi
+  
+  # Get all physical network interfaces (excluding lo, veth, docker, etc.)
+  for nic in /sys/class/net/*; do
+    nic_name=$(basename "$nic")
+    
+    # Skip virtual interfaces
+    if [[ "$nic_name" == "lo" ]] || [[ "$nic_name" == veth* ]] || [[ "$nic_name" == docker* ]] || 
+       [[ "$nic_name" == br-* ]] || [[ "$nic_name" == virbr* ]] || [[ "$nic_name" == tun* ]] ||
+       [[ "$nic_name" == tap* ]]; then
+      continue
+    fi
+    
+    # Check if it's a physical interface
+    if [ ! -d "/sys/class/net/$nic_name/device" ]; then
+      continue
+    fi
+    
+    ((total_nics++))
+    
+    # Get current ring buffer settings
+    ring_info=$(ethtool -g "$nic_name" 2>/dev/null)
+    
+    if [ $? -ne 0 ]; then
+      echo -e "  ${YELLOW}WARNING: Cannot get ring buffer info for $nic_name${NC}"
+      continue
+    fi
+    
+    # Parse current and maximum values - handle different ethtool output formats
+    rx_max=$(echo "$ring_info" | grep -A1 "Pre-set maximums:" | grep -E "(RX|Rx):" | awk '{print $2}')
+    rx_current=$(echo "$ring_info" | grep -A1 "Current hardware settings:" | grep -E "(RX|Rx):" | awk '{print $2}')
+    
+    # Try multiple patterns for TX values as different drivers use different formats
+    tx_max=$(echo "$ring_info" | grep -A1 "Pre-set maximums:" | grep -E "(TX|Tx):" | awk '{print $2}')
+    tx_current=$(echo "$ring_info" | grep -A1 "Current hardware settings:" | grep -E "(TX|Tx):" | awk '{print $2}')
+    
+    # Some drivers might not separate RX/TX, try alternative parsing
+    if [ -z "$tx_max" ] || [ -z "$tx_current" ]; then
+      # Try parsing TX from the same line as RX or different section
+      tx_max=$(echo "$ring_info" | grep -A5 "Pre-set maximums:" | grep -E "(TX|Tx)" | awk '{print $2}')
+      tx_current=$(echo "$ring_info" | grep -A5 "Current hardware settings:" | grep -E "(TX|Tx)" | awk '{print $2}')
+    fi
+    
+    # If still empty, some drivers might use different terminology
+    if [ -z "$tx_max" ] || [ -z "$tx_current" ]; then
+      # Try to find TX in the raw output with different patterns
+      tx_max=$(echo "$ring_info" | grep -i "tx.*max" | awk '{print $NF}' | grep -E '^[0-9]+$')
+      tx_current=$(echo "$ring_info" | grep -i "tx.*current" | awk '{print $NF}' | grep -E '^[0-9]+$')
+    fi
+    
+    # Check if values are at maximum
+    local nic_ok=true
+    
+    if [ -n "$rx_max" ] && [ -n "$rx_current" ]; then
+      # Clean values to remove any whitespace  
+      rx_max_clean=$(echo "$rx_max" | tr -d '[:space:]')
+      rx_current_clean=$(echo "$rx_current" | tr -d '[:space:]')
+      
+      # Use numeric comparison
+      if [ "$rx_current_clean" -lt "$rx_max_clean" ] 2>/dev/null; then
+        echo -e "  ${RED}FAIL: $nic_name RX ring buffer not at maximum${NC}"
+        echo -e "    Current: $rx_current_clean, Maximum: $rx_max_clean"
+        nic_ok=false
+        ((issues++))
+      fi
+    fi
+    
+    # Only check TX if we have valid values
+    if [ -n "$tx_max" ] && [ -n "$tx_current" ]; then
+      # Clean values to remove any whitespace
+      tx_max_clean=$(echo "$tx_max" | tr -d '[:space:]')
+      tx_current_clean=$(echo "$tx_current" | tr -d '[:space:]')
+      
+      # Use numeric comparison
+      if [ "$tx_current_clean" -lt "$tx_max_clean" ] 2>/dev/null; then
+        echo -e "  ${RED}FAIL: $nic_name TX ring buffer not at maximum${NC}"
+        echo -e "    Current: $tx_current_clean, Maximum: $tx_max_clean"
+        nic_ok=false
+        ((issues++))
+      fi
+    elif [ -n "$tx_max" ] || [ -n "$tx_current" ]; then
+      # Partial TX info available but incomplete
+      echo -e "  ${YELLOW}WARNING: $nic_name TX ring buffer info partially available${NC}"
+    fi
+    
+    if [ "$nic_ok" = true ]; then
+      if [ -n "$tx_current" ]; then
+        echo -e "  ${GREEN}PASS: $nic_name ring buffers are at maximum (RX: $rx_current, TX: $tx_current)${NC}"
+      else
+        echo -e "  ${GREEN}PASS: $nic_name RX ring buffer is at maximum (RX: $rx_current)${NC}"
+        echo -e "  ${YELLOW}NOTE: $nic_name TX ring buffer info not available from driver${NC}"
+      fi
+    fi
+  done
+  
+  if [ $total_nics -eq 0 ]; then
+    echo -e "  ${YELLOW}WARNING: No physical network interfaces found${NC}"
+    return 0
+  fi
+  
+  if [ $issues -eq 0 ]; then
+    echo -e "  ${GREEN}PASS: All NIC ring buffers are configured at maximum capacity${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: $issues NIC ring buffer(s) not at maximum capacity${NC}"
+    echo -e "  ${YELLOW}To fix: Use ethtool -G <interface> rx <max_value> tx <max_value>${NC}"
+    return 1
+  fi
+}
+
+# Function to check ethtool-ring-buffers.service
+check_ethtool_service() {
+  echo -e "\n${YELLOW}=== Network Services ===${NC}"
+  echo -e "${BLUE}Checking ethtool-ring-buffers.service...${NC}"
+  
+  # Check if systemctl command exists
+  if ! command -v systemctl &> /dev/null; then
+    echo -e "  ${RED}FAIL: systemctl command not found. Is this a systemd-based system?${NC}"
+    return 1
+  fi
+  
+  # Check if the service exists
+  if ! systemctl list-unit-files | grep -q ethtool-ring-buffers.service; then
+    echo -e "  ${RED}FAIL: ethtool-ring-buffers.service is not installed${NC}"
+    echo -e "  ${YELLOW}This service should be created to ensure ring buffers are set at boot${NC}"
+    return 1
+  fi
+  
+  # Check if service is enabled
+  if systemctl is-enabled ethtool-ring-buffers.service &> /dev/null; then
+    enabled_status="${GREEN}enabled${NC}"
+  else
+    enabled_status="${RED}disabled${NC}"
+  fi
+  
+  # Check if service is running
+  if systemctl is-active ethtool-ring-buffers.service &> /dev/null; then
+    active_status="${GREEN}active${NC}"
+  else
+    active_status="${RED}inactive${NC}"
+  fi
+  
+  # Display status
+  if [ "$enabled_status" = "${GREEN}enabled${NC}" ] && [ "$active_status" = "${GREEN}active${NC}" ]; then
+    echo -e "  ${GREEN}PASS: ethtool-ring-buffers.service is enabled and active${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: ethtool-ring-buffers.service status issue${NC}"
+    echo -e "  Service status: $active_status, boot status: $enabled_status"
+    echo -e "  Expected: ${GREEN}active${NC} and ${GREEN}enabled${NC}"
+    return 1
+  fi
+}
+
+# Function to check if C-states are disabled
+check_cstates_disabled() {
+  echo -e "\n${YELLOW}=== CPU C-State Configuration ===${NC}"
+  echo -e "${BLUE}Checking C-state status...${NC}"
+  
+  local cstates_enabled=false
+  
+  # Check kernel command line for intel_idle.max_cstate
+  if grep -q "intel_idle.max_cstate=0" /proc/cmdline; then
+    echo -e "  ${GREEN}PASS: C-states disabled via kernel parameter (intel_idle.max_cstate=0)${NC}"
+    return 0
+  fi
+  
+  # Check kernel command line for processor.max_cstate
+  if grep -q "processor.max_cstate=0" /proc/cmdline; then
+    echo -e "  ${GREEN}PASS: C-states disabled via kernel parameter (processor.max_cstate=0)${NC}"
+    return 0
+  fi
+  
+  # Check sysfs for C-state status
+  local cpu_idle_dir="/sys/devices/system/cpu/cpu0/cpuidle"
+  if [ -d "$cpu_idle_dir" ]; then
+    # Count enabled C-states
+    local enabled_cstates=0
+    for state in "$cpu_idle_dir"/state*; do
+      if [ -f "$state/disable" ]; then
+        if [ "$(cat "$state/disable")" -eq 0 ]; then
+          ((enabled_cstates++))
+        fi
+      fi
+    done
+    
+    if [ $enabled_cstates -le 1 ]; then
+      echo -e "  ${GREEN}PASS: C-states are effectively disabled (only C0 enabled)${NC}"
+      return 0
+    else
+      echo -e "  ${RED}FAIL: $enabled_cstates C-states are enabled${NC}"
+      echo -e "  ${YELLOW}To disable: Add 'intel_idle.max_cstate=0' or 'processor.max_cstate=0' to kernel parameters${NC}"
+      return 1
+    fi
+  else
+    echo -e "  ${YELLOW}WARNING: Unable to determine C-state status from sysfs${NC}"
+    echo -e "  ${YELLOW}Check kernel parameters for max_cstate settings${NC}"
+    return 0
+  fi
+}
+
+# Function to check AMD P-state EPP
+check_amd_pstate_epp() {
+  echo -e "\n${YELLOW}=== AMD P-State EPP Configuration ===${NC}"
+  echo -e "${BLUE}Checking energy performance preference...${NC}"
+  
+  # Check if this is an AMD system
+  if ! grep -q "AMD" /proc/cpuinfo; then
+    echo -e "  ${YELLOW}WARNING: Not an AMD processor, skipping AMD P-state EPP check${NC}"
+    return 0
+  fi
+  
+  # Check if amd-pstate driver is active
+  local driver_file="/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver"
+  if [ -f "$driver_file" ]; then
+    driver=$(cat "$driver_file")
+    if [[ "$driver" != "amd-pstate-epp" ]] && [[ "$driver" != "amd-pstate" ]]; then
+      echo -e "  ${YELLOW}WARNING: AMD P-state driver not active (current: $driver)${NC}"
+      return 0
+    fi
+  fi
+  
+  # Check EPP settings
+  local epp_file="/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference"
+  if [ -f "$epp_file" ]; then
+    local epp_value=$(cat "$epp_file")
+    if [ "$epp_value" = "performance" ]; then
+      echo -e "  ${GREEN}PASS: EPP set to performance mode${NC}"
+      return 0
+    else
+      echo -e "  ${RED}FAIL: EPP not set to performance mode${NC}"
+      echo -e "  Current: ${YELLOW}$epp_value${NC}"
+      echo -e "  Expected: ${GREEN}performance${NC}"
+      return 1
+    fi
+  else
+    echo -e "  ${YELLOW}WARNING: EPP not available on this system${NC}"
+    return 0
+  fi
+}
+
+# Function to check isolated CPUs
+check_isolated_cpus() {
+  echo -e "\n${YELLOW}=== CPU Isolation ===${NC}"
+  echo -e "${BLUE}Checking isolated CPU cores...${NC}"
+  
+  # Check kernel command line for isolcpus
+  if grep -q "isolcpus=" /proc/cmdline; then
+    local isolated=$(grep -o "isolcpus=[^ ]*" /proc/cmdline | cut -d= -f2)
+    echo -e "  ${GREEN}PASS: CPU cores isolated: $isolated${NC}"
+    return 0
+  else
+    echo -e "  ${YELLOW}WARNING: No CPU cores isolated${NC}"
+    echo -e "  ${YELLOW}Consider using isolcpus kernel parameter for dedicated workloads${NC}"
+    return 0  # Not a failure, just informational
+  fi
+}
+
+# Function to check CPU power limits
+check_cpu_power_limits() {
+  echo -e "\n${YELLOW}=== CPU Power Limits ===${NC}"
+  echo -e "${BLUE}Checking CPU power limit configuration...${NC}"
+  
+  # Check Intel RAPL power limits
+  local rapl_base="/sys/class/powercap/intel-rapl"
+  if [ -d "$rapl_base" ]; then
+    echo -e "  ${BLUE}Intel RAPL power limits detected${NC}"
+    
+    for pkg in "$rapl_base"/intel-rapl:*; do
+      if [ -d "$pkg" ] && [[ "$pkg" == *":0"* ]]; then
+        if [ -f "$pkg/constraint_0_power_limit_uw" ]; then
+          local limit=$(cat "$pkg/constraint_0_power_limit_uw")
+          local limit_watts=$((limit / 1000000))
+          echo -e "  Package power limit: ${YELLOW}${limit_watts}W${NC}"
+        fi
+        
+        if [ -f "$pkg/enabled" ]; then
+          local enabled=$(cat "$pkg/enabled")
+          if [ "$enabled" -eq 1 ]; then
+            echo -e "  ${YELLOW}WARNING: Power limits are enabled${NC}"
+            echo -e "  ${YELLOW}This may limit performance under heavy load${NC}"
+          else
+            echo -e "  ${GREEN}PASS: Power limits are disabled${NC}"
+          fi
+        fi
+      fi
+    done
+    return 0
+  else
+    echo -e "  ${GREEN}PASS: No Intel RAPL power limits found${NC}"
+    return 0
+  fi
+}
+
+# Function to check NVMe drive wear levels
+check_nvme_wear() {
+  echo -e "\n${YELLOW}=== NVMe Drive Health ===${NC}"
+  echo -e "${BLUE}Checking NVMe drive wear levels...${NC}"
+  
+  local max_wear_threshold=$(get_config '.systemChecks.storage.maxNvmeWearPercent' "80")
+  local issues=0
+  local total_drives=0
+  local nvme_found=false
+  
+  # Check if nvme command is available
+  if ! command -v nvme &> /dev/null; then
+    echo -e "  ${RED}FAIL: nvme-cli is not installed${NC}"
+    echo -e "  ${YELLOW}Install with: apt-get install nvme-cli (Debian/Ubuntu) or yum install nvme-cli (RHEL/CentOS)${NC}"
+    return 1
+  fi
+  
+  # Check for NVMe drives in the system
+  for i in {0..15}; do
+    device="/dev/nvme${i}n1"
+    if [ -b "$device" ]; then
+      nvme_found=true
+      ((total_drives++))
+      
+      # Get SMART log data
+      smart_data=$(nvme smart-log "$device" 2>/dev/null)
+      
+      if [ $? -ne 0 ]; then
+        echo -e "  ${YELLOW}WARNING: Cannot read SMART data for $device (may require sudo)${NC}"
+        continue
+      fi
+      
+      # Extract percentage used
+      percentage_used=$(echo "$smart_data" | grep -i "percentage_used" | awk '{print $3}' | tr -d '%')
+      
+      if [ -z "$percentage_used" ]; then
+        echo -e "  ${YELLOW}WARNING: Cannot determine wear level for $device${NC}"
+        continue
+      fi
+      
+      # Clean the value to ensure it's numeric
+      percentage_used=$(echo "$percentage_used" | tr -d '[:space:]')
+      
+      # Check if wear level exceeds threshold
+      if [ "$percentage_used" -ge "$max_wear_threshold" ] 2>/dev/null; then
+        echo -e "  ${RED}FAIL: $device wear level is ${percentage_used}% (threshold: ${max_wear_threshold}%)${NC}"
+        ((issues++))
+      else
+        echo -e "  ${GREEN}PASS: $device wear level is ${percentage_used}% (threshold: ${max_wear_threshold}%)${NC}"
+      fi
+    fi
+  done
+  
+  if [ "$nvme_found" = false ]; then
+    echo -e "  ${YELLOW}WARNING: No NVMe drives found in the system${NC}"
+    return 0  # Not a failure if no NVMe drives present
+  fi
+  
+  if [ $issues -eq 0 ]; then
+    echo -e "  ${GREEN}PASS: All $total_drives NVMe drive(s) are within acceptable wear levels${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: $issues of $total_drives NVMe drive(s) exceed wear threshold${NC}"
+    echo -e "  ${YELLOW}Consider replacing drives with wear levels >= ${max_wear_threshold}%${NC}"
+    return 1
+  fi
+}
+
+# Check NIC ring buffers if enabled in config
+if should_run_check "nicRingBuffers"; then
+  if ! check_nic_ring_buffers; then
+    ((failures++))
+    failed_checks+=("Network Interface Ring Buffers")
+  fi
+else
+  echo -e "\n${YELLOW}=== Network Interface Ring Buffers ===${NC}"
+  echo -e "${BLUE}Checking NIC ring buffer sizes... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check ethtool-ring-buffers service if enabled in config
+if should_run_check "ethtoolService"; then
+  if ! check_ethtool_service; then
+    ((failures++))
+    failed_checks+=("Network Services: ethtool-ring-buffers.service")
+  fi
+else
+  echo -e "\n${YELLOW}=== Network Services ===${NC}"
+  echo -e "${BLUE}Checking ethtool-ring-buffers.service... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check C-states if enabled in config
+if should_run_check "cstatesDisabled"; then
+  if ! check_cstates_disabled; then
+    ((failures++))
+    failed_checks+=("CPU Power Management: C-states")
+  fi
+else
+  echo -e "\n${YELLOW}=== CPU C-State Configuration ===${NC}"
+  echo -e "${BLUE}Checking C-state status... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check AMD P-state EPP if enabled in config
+if should_run_check "amdPstateEpp"; then
+  if ! check_amd_pstate_epp; then
+    ((failures++))
+    failed_checks+=("CPU Power Management: AMD P-state EPP")
+  fi
+else
+  echo -e "\n${YELLOW}=== AMD P-State EPP Configuration ===${NC}"
+  echo -e "${BLUE}Checking energy performance preference... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check isolated CPUs if enabled in config
+if should_run_check "isolatedCpus"; then
+  if ! check_isolated_cpus; then
+    ((failures++))
+    failed_checks+=("CPU Configuration: Isolated CPUs")
+  fi
+else
+  echo -e "\n${YELLOW}=== CPU Isolation ===${NC}"
+  echo -e "${BLUE}Checking isolated CPU cores... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check CPU power limits if enabled in config
+if should_run_check "cpuPowerLimits"; then
+  if ! check_cpu_power_limits; then
+    ((failures++))
+    failed_checks+=("CPU Configuration: Power Limits")
+  fi
+else
+  echo -e "\n${YELLOW}=== CPU Power Limits ===${NC}"
+  echo -e "${BLUE}Checking CPU power limit configuration... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check NVMe wear levels if enabled in config
+if should_run_check "nvmeWear"; then
+  if ! check_nvme_wear; then
+    ((failures++))
+    failed_checks+=("Storage: NVMe Wear Levels")
+  fi
+else
+  echo -e "\n${YELLOW}=== NVMe Drive Health ===${NC}"
+  echo -e "${BLUE}Checking NVMe drive wear levels... ${YELLOW}[SKIPPED]${NC}"
+fi
+
 # Summary - Always show this part even in quiet mode
 if [ "$QUIET_MODE" = true ]; then
   # Restore stdout for the summary
@@ -1212,3 +1664,4 @@ else
   done
   exit 1
 fi
+
