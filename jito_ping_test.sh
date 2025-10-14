@@ -4,11 +4,13 @@
 HOSTS=(
     "mainnet.block-engine.jito.wtf"
     "amsterdam.mainnet.block-engine.jito.wtf"
+    "dublin.mainnet.block-engine.jito.wtf"
     "frankfurt.mainnet.block-engine.jito.wtf"
     "london.mainnet.block-engine.jito.wtf"
     "ny.mainnet.block-engine.jito.wtf"
-    "tokyo.mainnet.block-engine.jito.wtf"
     "slc.mainnet.block-engine.jito.wtf"
+    "singapore.mainnet.block-engine.jito.wtf"
+    "tokyo.mainnet.block-engine.jito.wtf"
     "dublin.mainnet.block-engine.jito.wtf"
 )
 
