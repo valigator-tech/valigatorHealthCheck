@@ -5,7 +5,7 @@ HOSTS=(
     "amsterdam.mainnet.bam.jito.wtf"
     "frankfurt.mainnet.bam.jito.wtf"
     "london.mainnet.bam.jito.wtf"
-    "fny.mainnet.bam.jito.wtf"
+    "ny.mainnet.bam.jito.wtf"
     "slc.mainnet.bam.jito.wtf"
     "tokyo.mainnet.bam.jito.wtf"
     "singapore.mainnet.bam.jito.wtf"
