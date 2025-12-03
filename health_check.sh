@@ -982,6 +982,98 @@ else
   echo -e "${BLUE}Checking SSH configuration... ${YELLOW}[SKIPPED]${NC}"
 fi
 
+# Function to check required packages (rsyslog, ufw) and rsyslog service
+check_required_packages() {
+  echo -e "\n${YELLOW}=== Required Packages ===${NC}"
+  echo -e "${BLUE}Checking required packages and services...${NC}"
+
+  local issues=0
+
+  # Check if dpkg is available (Debian/Ubuntu)
+  if command -v dpkg &> /dev/null; then
+    # Check for rsyslog package
+    if dpkg -l rsyslog 2>/dev/null | grep -q "^ii"; then
+      echo -e "  ${GREEN}PASS: rsyslog package is installed${NC}"
+    else
+      echo -e "  ${RED}FAIL: rsyslog package is not installed${NC}"
+      ((issues++))
+    fi
+
+    # Check for ufw package
+    if dpkg -l ufw 2>/dev/null | grep -q "^ii"; then
+      echo -e "  ${GREEN}PASS: ufw package is installed${NC}"
+    else
+      echo -e "  ${RED}FAIL: ufw package is not installed${NC}"
+      ((issues++))
+    fi
+  elif command -v rpm &> /dev/null; then
+    # Check for rsyslog package (RHEL/CentOS/Fedora)
+    if rpm -q rsyslog &> /dev/null; then
+      echo -e "  ${GREEN}PASS: rsyslog package is installed${NC}"
+    else
+      echo -e "  ${RED}FAIL: rsyslog package is not installed${NC}"
+      ((issues++))
+    fi
+
+    # Check for ufw package (may not be available on RHEL-based systems)
+    if rpm -q ufw &> /dev/null; then
+      echo -e "  ${GREEN}PASS: ufw package is installed${NC}"
+    else
+      echo -e "  ${YELLOW}WARNING: ufw package is not installed (firewalld may be used instead on RHEL-based systems)${NC}"
+    fi
+  else
+    echo -e "  ${YELLOW}WARNING: Cannot determine package manager, skipping package checks${NC}"
+    return 0
+  fi
+
+  # Check rsyslog service status
+  if command -v systemctl &> /dev/null; then
+    # Check if rsyslog service is enabled
+    if systemctl is-enabled rsyslog &> /dev/null; then
+      echo -e "  ${GREEN}PASS: rsyslog service is enabled${NC}"
+    else
+      echo -e "  ${RED}FAIL: rsyslog service is not enabled${NC}"
+      ((issues++))
+    fi
+
+    # Check if rsyslog service is running
+    if systemctl is-active rsyslog &> /dev/null; then
+      echo -e "  ${GREEN}PASS: rsyslog service is running${NC}"
+    else
+      echo -e "  ${RED}FAIL: rsyslog service is not running${NC}"
+      ((issues++))
+    fi
+
+    # Check if rsyslog service is healthy (not in failed state)
+    local rsyslog_status=$(systemctl is-failed rsyslog 2>/dev/null)
+    if [ "$rsyslog_status" = "active" ]; then
+      echo -e "  ${RED}FAIL: rsyslog service is in failed state${NC}"
+      ((issues++))
+    fi
+  else
+    echo -e "  ${YELLOW}WARNING: systemctl not available, cannot check rsyslog service status${NC}"
+  fi
+
+  if [ $issues -eq 0 ]; then
+    echo -e "  ${GREEN}PASS: All required packages installed and services healthy${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: $issues issue(s) found with required packages/services${NC}"
+    return 1
+  fi
+}
+
+# Check required packages if enabled in config
+if should_run_check "requiredPackages"; then
+  if ! check_required_packages; then
+    ((failures++))
+    failed_checks+=("Required Packages: rsyslog/ufw")
+  fi
+else
+  echo -e "\n${YELLOW}=== Required Packages ===${NC}"
+  echo -e "${BLUE}Checking required packages and services... ${YELLOW}[SKIPPED]${NC}"
+fi
+
 # Function to check if unattended upgrades are disabled or enabled based on config
 check_unattended_upgrades_disabled() {
   local unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")

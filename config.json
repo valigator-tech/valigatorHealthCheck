@@ -18,7 +18,8 @@
     "rebootStatus": true,
     "nicRingBuffers": true,
     "ethtoolService": true,
-    "nvmeWear": true
+    "nvmeWear": true,
+    "requiredPackages": true
   },
   "systemChecks": {
     "cpu": {
