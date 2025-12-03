@@ -734,72 +734,89 @@ else
 fi
 
 # Function to check NTP synchronization status
+# This check requires systemd-timesyncd and will fail if chrony/ntpd is used instead
 check_ntp_sync() {
   echo -e "\n${YELLOW}=== Time Synchronization ===${NC}"
-  echo -e "${BLUE}Checking NTP time sync status...${NC}"
-  
-  local ntp_synced=false
-  local sync_method=""
-  
-  # Check for systemd-timesyncd
-  if command -v timedatectl &> /dev/null; then
-    if timedatectl status | grep -q "NTP service: active"; then
-      ntp_synced=true
+  echo -e "${BLUE}Checking time sync service...${NC}"
+
+  local sync_method="none"
+  local timesyncd_active=false
+  local chrony_active=false
+  local ntpd_active=false
+  local openntpd_active=false
+
+  # Check which NTP services are running
+  if command -v systemctl &> /dev/null; then
+    if systemctl is-active --quiet systemd-timesyncd; then
+      timesyncd_active=true
       sync_method="systemd-timesyncd"
-    elif timedatectl status | grep -q "NTP enabled: yes"; then
-      ntp_synced=true
-      sync_method="systemd NTP"
-    elif timedatectl status | grep -q "System clock synchronized: yes"; then
-      ntp_synced=true
-      sync_method="systemd (clock already synchronized)"
     fi
-  fi
-  
-  # Check for chronyd if not already found
-  if [ "$ntp_synced" = false ] && command -v chronyc &> /dev/null; then
-    if chronyc tracking &> /dev/null; then
-      sync_status=$(chronyc tracking | grep "Leap status" | cut -d ":" -f2 | xargs)
-      if [ "$sync_status" = "Normal" ] || [ "$sync_status" = "Synchronized" ]; then
-        ntp_synced=true
-        sync_method="chrony"
-      fi
+    if systemctl is-active --quiet chronyd || systemctl is-active --quiet chrony; then
+      chrony_active=true
+      sync_method="chrony"
     fi
-  fi
-  
-  # Check for ntpd if not already found
-  if [ "$ntp_synced" = false ] && command -v ntpq &> /dev/null; then
-    if ntpq -p &> /dev/null && ntpq -c rv | grep -q "sync"; then
-      ntp_synced=true
+    if systemctl is-active --quiet ntpd || systemctl is-active --quiet ntp; then
+      ntpd_active=true
       sync_method="ntpd"
     fi
-  fi
-  
-  # Check for OpenNTPD if not already found
-  if [ "$ntp_synced" = false ] && command -v ntpctl &> /dev/null; then
-    if ntpctl -s status | grep -q "clock synced"; then
-      ntp_synced=true
+    if systemctl is-active --quiet openntpd; then
+      openntpd_active=true
       sync_method="OpenNTPD"
     fi
   fi
-  
-  # Check for running NTP services if not already found
-  if [ "$ntp_synced" = false ] && command -v systemctl &> /dev/null; then
-    if systemctl is-active --quiet ntpd || systemctl is-active --quiet chronyd || \
-       systemctl is-active --quiet systemd-timesyncd || systemctl is-active --quiet openntpd; then
-      ntp_synced=true
-      sync_method="active NTP service"
-    fi
-  fi
-  
-  # Display result
-  if [ "$ntp_synced" = true ]; then
-    echo -e "  ${GREEN}PASS: Time synchronization is enabled ($sync_method)${NC}"
+
+  # Display current sync method
+  echo -e "  Current time sync: ${YELLOW}$sync_method${NC}"
+
+  # Check if systemd-timesyncd is active (required)
+  if [ "$timesyncd_active" = true ]; then
+    echo -e "  ${GREEN}PASS: systemd-timesyncd is active${NC}"
     return 0
-  else
-    echo -e "  ${RED}FAIL: No active time synchronization detected${NC}"
-    echo -e "  Expected: ${GREEN}Enabled NTP service${NC} (systemd-timesyncd, chronyd, ntpd, or OpenNTPD)"
+  fi
+
+  # Fail if using chrony instead
+  if [ "$chrony_active" = true ]; then
+    echo -e "  ${RED}FAIL: System is using chrony instead of systemd-timesyncd${NC}"
+    echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
+    echo -e "  ${YELLOW}To fix:${NC}"
+    echo -e "    sudo systemctl stop chrony"
+    echo -e "    sudo systemctl disable chrony"
+    echo -e "    sudo systemctl enable systemd-timesyncd"
+    echo -e "    sudo systemctl start systemd-timesyncd"
     return 1
   fi
+
+  # Fail if using ntpd instead
+  if [ "$ntpd_active" = true ]; then
+    echo -e "  ${RED}FAIL: System is using ntpd instead of systemd-timesyncd${NC}"
+    echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
+    echo -e "  ${YELLOW}To fix:${NC}"
+    echo -e "    sudo systemctl stop ntp"
+    echo -e "    sudo systemctl disable ntp"
+    echo -e "    sudo systemctl enable systemd-timesyncd"
+    echo -e "    sudo systemctl start systemd-timesyncd"
+    return 1
+  fi
+
+  # Fail if using OpenNTPD instead
+  if [ "$openntpd_active" = true ]; then
+    echo -e "  ${RED}FAIL: System is using OpenNTPD instead of systemd-timesyncd${NC}"
+    echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
+    echo -e "  ${YELLOW}To fix:${NC}"
+    echo -e "    sudo systemctl stop openntpd"
+    echo -e "    sudo systemctl disable openntpd"
+    echo -e "    sudo systemctl enable systemd-timesyncd"
+    echo -e "    sudo systemctl start systemd-timesyncd"
+    return 1
+  fi
+
+  # No NTP service detected
+  echo -e "  ${RED}FAIL: No time synchronization service detected${NC}"
+  echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
+  echo -e "  ${YELLOW}To fix:${NC}"
+  echo -e "    sudo systemctl enable systemd-timesyncd"
+  echo -e "    sudo systemctl start systemd-timesyncd"
+  return 1
 }
 
 # Check package updates if enabled in config
