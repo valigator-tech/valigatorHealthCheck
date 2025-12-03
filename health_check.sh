@@ -896,6 +896,57 @@ else
   echo -e "${BLUE}Checking NTP time sync status... ${YELLOW}[SKIPPED]${NC}"
 fi
 
+# Function to check if system timezone is UTC
+check_timezone_utc() {
+  echo -e "\n${YELLOW}=== System Timezone ===${NC}"
+  echo -e "${BLUE}Checking system timezone...${NC}"
+
+  local current_tz=""
+
+  # Try timedatectl first (systemd systems)
+  if command -v timedatectl &> /dev/null; then
+    current_tz=$(timedatectl show --property=Timezone --value 2>/dev/null)
+  fi
+
+  # Fallback to reading /etc/timezone (Debian/Ubuntu)
+  if [ -z "$current_tz" ] && [ -f "/etc/timezone" ]; then
+    current_tz=$(cat /etc/timezone)
+  fi
+
+  # Fallback to checking the symlink
+  if [ -z "$current_tz" ] && [ -L "/etc/localtime" ]; then
+    current_tz=$(readlink -f /etc/localtime | sed 's|.*/zoneinfo/||')
+  fi
+
+  # Fallback to date command
+  if [ -z "$current_tz" ]; then
+    current_tz=$(date +%Z)
+  fi
+
+  # Check if timezone is UTC (accept UTC, Etc/UTC, or Etc/Zulu)
+  if [[ "$current_tz" == "UTC" ]] || [[ "$current_tz" == "Etc/UTC" ]] || [[ "$current_tz" == "Etc/Zulu" ]]; then
+    echo -e "  ${GREEN}PASS: System timezone is UTC ($current_tz)${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: System timezone is not UTC${NC}"
+    echo -e "  Current timezone: ${YELLOW}$current_tz${NC}"
+    echo -e "  Expected: ${GREEN}UTC${NC}"
+    echo -e "  ${YELLOW}To fix: sudo timedatectl set-timezone UTC${NC}"
+    return 1
+  fi
+}
+
+# Check timezone if enabled in config
+if should_run_check "timezoneUtc"; then
+  if ! check_timezone_utc; then
+    ((failures++))
+    failed_checks+=("System Timezone: UTC")
+  fi
+else
+  echo -e "\n${YELLOW}=== System Timezone ===${NC}"
+  echo -e "${BLUE}Checking system timezone... ${YELLOW}[SKIPPED]${NC}"
+fi
+
 # Function to check logrotate configuration for Solana
 check_solana_logrotate() {
   echo -e "\n${YELLOW}=== Log Management ===${NC}"
