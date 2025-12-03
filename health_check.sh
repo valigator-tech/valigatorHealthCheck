@@ -1046,7 +1046,7 @@ check_required_packages() {
 
     # Check if rsyslog service is healthy (not in failed state)
     local rsyslog_status=$(systemctl is-failed rsyslog 2>/dev/null)
-    if [ "$rsyslog_status" = "active" ]; then
+    if [ "$rsyslog_status" = "failed" ]; then
       echo -e "  ${RED}FAIL: rsyslog service is in failed state${NC}"
       ((issues++))
     fi
