@@ -22,6 +22,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+echo "Checking for auto-removable packages on local system..."
+AUTOREMOVE=$(apt-get --dry-run autoremove 2>/dev/null | grep -oP '^\s+\K\S+' | tr '\n' ' ')
+echo ""
+echo "=========================================="
+echo "LOCAL PACKAGES NO LONGER NEEDED"
+echo "(can be removed with: apt autoremove)"
+echo "=========================================="
+if [[ -z "$AUTOREMOVE" ]]; then
+    echo "(none)"
+else
+    echo "$AUTOREMOVE"
+fi
+
+echo ""
 echo "Gathering local packages..."
 dpkg-query -W -f='${Package}\n' | sort -u > "$LOCAL_TMP"
 LOCAL_COUNT=$(wc -l < "$LOCAL_TMP")
