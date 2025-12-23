@@ -1,18 +1,19 @@
 #!/bin/bash
 #
 # Compare installed APT packages between local and remote server
-# Usage: ./compare_packages.sh user@remote-server
+# Usage: ./compare_packages.sh remote-server
+# Note: Connects as sol@remote using local sol user's SSH keys
 #
 
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <user@remote-server>"
-    echo "Example: $0 root@192.168.1.100"
+    echo "Usage: $0 <remote-server>"
+    echo "Example: $0 192.168.1.100"
     exit 1
 fi
 
-REMOTE_HOST="$1"
+REMOTE_HOST="sol@$1"
 LOCAL_TMP=$(mktemp)
 REMOTE_TMP=$(mktemp)
 
@@ -27,7 +28,7 @@ LOCAL_COUNT=$(wc -l < "$LOCAL_TMP")
 echo "  Found $LOCAL_COUNT packages locally"
 
 echo "Gathering remote packages from $REMOTE_HOST..."
-ssh "$REMOTE_HOST" "dpkg-query -W -f='\${Package}\n'" | sort -u > "$REMOTE_TMP"
+sudo -u sol ssh "$REMOTE_HOST" "dpkg-query -W -f='\${Package}\n'" | sort -u > "$REMOTE_TMP"
 REMOTE_COUNT=$(wc -l < "$REMOTE_TMP")
 echo "  Found $REMOTE_COUNT packages on remote"
 
