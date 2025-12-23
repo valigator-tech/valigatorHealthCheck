@@ -46,7 +46,7 @@ echo "=========================================="
 ALL_PKGS=$(dpkg-query -W -f='${Package}\n')
 
 # Development packages (usually not needed on production)
-DEV_PKGS=$(echo "$ALL_PKGS" | grep -E '\-(dev|devel)$' | tr '\n' ' ')
+DEV_PKGS=$(echo "$ALL_PKGS" | grep -E '\-(dev|devel)$' | tr '\n' ' ' || true)
 if [[ -n "$DEV_PKGS" ]]; then
     echo ""
     echo "[Development packages]"
@@ -54,7 +54,7 @@ if [[ -n "$DEV_PKGS" ]]; then
 fi
 
 # Documentation packages
-DOC_PKGS=$(echo "$ALL_PKGS" | grep -E '\-doc$|^doc\-' | tr '\n' ' ')
+DOC_PKGS=$(echo "$ALL_PKGS" | grep -E '\-doc$|^doc\-' | tr '\n' ' ' || true)
 if [[ -n "$DOC_PKGS" ]]; then
     echo ""
     echo "[Documentation]"
@@ -62,7 +62,7 @@ if [[ -n "$DOC_PKGS" ]]; then
 fi
 
 # GUI/Desktop/X11 related
-GUI_PKGS=$(echo "$ALL_PKGS" | grep -iE '^x11|^libx11|^libgtk|^libqt|^gnome|^kde|^wayland|^libwayland|^xorg|^xserver' | tr '\n' ' ')
+GUI_PKGS=$(echo "$ALL_PKGS" | grep -iE '^x11|^libx11|^libgtk|^libqt|^gnome|^kde|^wayland|^libwayland|^xorg|^xserver' | tr '\n' ' ' || true)
 if [[ -n "$GUI_PKGS" ]]; then
     echo ""
     echo "[GUI/Desktop/X11]"
@@ -70,7 +70,7 @@ if [[ -n "$GUI_PKGS" ]]; then
 fi
 
 # Build tools
-BUILD_PKGS=$(echo "$ALL_PKGS" | grep -E '^gcc$|^gcc\-[0-9]+$|^g\+\+|^make$|^build\-essential$|^cmake$|^autoconf$|^automake$|^libtool$' | tr '\n' ' ')
+BUILD_PKGS=$(echo "$ALL_PKGS" | grep -E '^gcc$|^gcc\-[0-9]+$|^g\+\+|^make$|^build\-essential$|^cmake$|^autoconf$|^automake$|^libtool$' | tr '\n' ' ' || true)
 if [[ -n "$BUILD_PKGS" ]]; then
     echo ""
     echo "[Build tools]"
@@ -78,7 +78,7 @@ if [[ -n "$BUILD_PKGS" ]]; then
 fi
 
 # Potentially unused language runtimes
-LANG_PKGS=$(echo "$ALL_PKGS" | grep -E '^ruby[0-9]|^php[0-9]|^perl$|^tcl[0-9]|^lua[0-9]' | tr '\n' ' ')
+LANG_PKGS=$(echo "$ALL_PKGS" | grep -E '^ruby[0-9]|^php[0-9]|^perl$|^tcl[0-9]|^lua[0-9]' | tr '\n' ' ' || true)
 if [[ -n "$LANG_PKGS" ]]; then
     echo ""
     echo "[Language runtimes - verify if needed]"
@@ -86,7 +86,7 @@ if [[ -n "$LANG_PKGS" ]]; then
 fi
 
 # Games, fonts, sound
-MISC_PKGS=$(echo "$ALL_PKGS" | grep -iE '^game|^fonts\-|^pulseaudio|^alsa\-|^sound' | tr '\n' ' ')
+MISC_PKGS=$(echo "$ALL_PKGS" | grep -iE '^game|^fonts\-|^pulseaudio|^alsa\-|^sound' | tr '\n' ' ' || true)
 if [[ -n "$MISC_PKGS" ]]; then
     echo ""
     echo "[Games/Fonts/Sound]"
@@ -94,7 +94,7 @@ if [[ -n "$MISC_PKGS" ]]; then
 fi
 
 # Man pages
-MAN_PKGS=$(echo "$ALL_PKGS" | grep -E '^man\-db$|^manpages' | tr '\n' ' ')
+MAN_PKGS=$(echo "$ALL_PKGS" | grep -E '^man\-db$|^manpages' | tr '\n' ' ' || true)
 if [[ -n "$MAN_PKGS" ]]; then
     echo ""
     echo "[Man pages]"
