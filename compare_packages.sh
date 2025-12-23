@@ -36,6 +36,77 @@ else
 fi
 
 echo ""
+echo "Scanning for potentially unnecessary packages..."
+echo ""
+echo "=========================================="
+echo "POTENTIAL BLOAT (review before removing)"
+echo "=========================================="
+
+# Get all installed packages
+ALL_PKGS=$(dpkg-query -W -f='${Package}\n')
+
+# Development packages (usually not needed on production)
+DEV_PKGS=$(echo "$ALL_PKGS" | grep -E '\-(dev|devel)$' | tr '\n' ' ')
+if [[ -n "$DEV_PKGS" ]]; then
+    echo ""
+    echo "[Development packages]"
+    echo "$DEV_PKGS"
+fi
+
+# Documentation packages
+DOC_PKGS=$(echo "$ALL_PKGS" | grep -E '\-doc$|^doc\-' | tr '\n' ' ')
+if [[ -n "$DOC_PKGS" ]]; then
+    echo ""
+    echo "[Documentation]"
+    echo "$DOC_PKGS"
+fi
+
+# GUI/Desktop/X11 related
+GUI_PKGS=$(echo "$ALL_PKGS" | grep -iE '^x11|^libx11|^libgtk|^libqt|^gnome|^kde|^wayland|^libwayland|^xorg|^xserver' | tr '\n' ' ')
+if [[ -n "$GUI_PKGS" ]]; then
+    echo ""
+    echo "[GUI/Desktop/X11]"
+    echo "$GUI_PKGS"
+fi
+
+# Build tools
+BUILD_PKGS=$(echo "$ALL_PKGS" | grep -E '^gcc$|^gcc\-[0-9]+$|^g\+\+|^make$|^build\-essential$|^cmake$|^autoconf$|^automake$|^libtool$' | tr '\n' ' ')
+if [[ -n "$BUILD_PKGS" ]]; then
+    echo ""
+    echo "[Build tools]"
+    echo "$BUILD_PKGS"
+fi
+
+# Potentially unused language runtimes
+LANG_PKGS=$(echo "$ALL_PKGS" | grep -E '^ruby[0-9]|^php[0-9]|^perl$|^tcl[0-9]|^lua[0-9]' | tr '\n' ' ')
+if [[ -n "$LANG_PKGS" ]]; then
+    echo ""
+    echo "[Language runtimes - verify if needed]"
+    echo "$LANG_PKGS"
+fi
+
+# Games, fonts, sound
+MISC_PKGS=$(echo "$ALL_PKGS" | grep -iE '^game|^fonts\-|^pulseaudio|^alsa\-|^sound' | tr '\n' ' ')
+if [[ -n "$MISC_PKGS" ]]; then
+    echo ""
+    echo "[Games/Fonts/Sound]"
+    echo "$MISC_PKGS"
+fi
+
+# Man pages
+MAN_PKGS=$(echo "$ALL_PKGS" | grep -E '^man\-db$|^manpages' | tr '\n' ' ')
+if [[ -n "$MAN_PKGS" ]]; then
+    echo ""
+    echo "[Man pages]"
+    echo "$MAN_PKGS"
+fi
+
+# Check if anything was found
+if [[ -z "$DEV_PKGS" && -z "$DOC_PKGS" && -z "$GUI_PKGS" && -z "$BUILD_PKGS" && -z "$LANG_PKGS" && -z "$MISC_PKGS" && -z "$MAN_PKGS" ]]; then
+    echo "(none detected)"
+fi
+
+echo ""
 echo "Gathering local packages..."
 dpkg-query -W -f='${Package}\n' | sort -u > "$LOCAL_TMP"
 LOCAL_COUNT=$(wc -l < "$LOCAL_TMP")
