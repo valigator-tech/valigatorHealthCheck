@@ -1612,7 +1612,7 @@ check_amd_pstate_epp() {
       return 1
     fi
   else
-    echo -e "  ${YELLOW}WARNING: EPP not available on this system${NC}"
+    # EPP not available - silently succeed since check doesn't apply
     return 0
   fi
 }
