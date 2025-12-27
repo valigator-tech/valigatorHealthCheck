@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Parse command line arguments
 QUIET_MODE=false
-CONFIG_FILE="./config.json"
+CONFIG_FILE=""
 
 # Parse command line options
 while [[ $# -gt 0 ]]; do
@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $0 [OPTIONS]"
       echo "Options:"
       echo "  -q, --quiet             Suppress detailed output, only show final summary"
-      echo "  -c, --config FILE       Use specified config file (default: ./config.json)"
+      echo "  -c, --config FILE       Use specified config file (default: ./local_config.json or ./config.json)"
       echo "  -h, --help              Display this help message and exit"
       echo ""
       echo "Note: Use the config.json file to enable/disable specific checks"
@@ -42,6 +42,15 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# If no config file specified via -c, check for local_config.json first, then fall back to config.json
+if [ -z "$CONFIG_FILE" ]; then
+  if [ -f "./local_config.json" ]; then
+    CONFIG_FILE="./local_config.json"
+  else
+    CONFIG_FILE="./config.json"
+  fi
+fi
 
 # Check if the config file exists
 if [ ! -f "$CONFIG_FILE" ]; then
