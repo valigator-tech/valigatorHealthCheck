@@ -9,6 +9,9 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;36m' # Changed to cyan (lighter blue)
 NC='\033[0m' # No Color
 
+# Get the directory where the script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Parse command line arguments
 QUIET_MODE=false
 CONFIG_FILE=""
@@ -29,7 +32,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $0 [OPTIONS]"
       echo "Options:"
       echo "  -q, --quiet             Suppress detailed output, only show final summary"
-      echo "  -c, --config FILE       Use specified config file (default: ./local_config.json or ./config.json)"
+      echo "  -c, --config FILE       Use specified config file (default: local_config.json or config.json in script dir)"
       echo "  -h, --help              Display this help message and exit"
       echo ""
       echo "Note: Use the config.json file to enable/disable specific checks"
@@ -45,10 +48,10 @@ done
 
 # If no config file specified via -c, check for local_config.json first, then fall back to config.json
 if [ -z "$CONFIG_FILE" ]; then
-  if [ -f "./local_config.json" ]; then
-    CONFIG_FILE="./local_config.json"
+  if [ -f "$SCRIPT_DIR/local_config.json" ]; then
+    CONFIG_FILE="$SCRIPT_DIR/local_config.json"
   else
-    CONFIG_FILE="./config.json"
+    CONFIG_FILE="$SCRIPT_DIR/config.json"
   fi
 fi
 
