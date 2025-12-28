@@ -601,6 +601,18 @@ check_cpu_boost() {
         boost_status="disabled"
       fi
     else
+      # Check if using amd-pstate-epp driver (boost controlled via EPP, checked separately)
+      local current_driver=""
+      if [ -f "/sys/devices/system/cpu/cpu0/cpufreq/scaling_driver" ]; then
+        current_driver=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)
+      fi
+
+      if [ "$current_driver" = "amd-pstate-epp" ]; then
+        # amd-pstate-epp controls boost via energy_performance_preference
+        # Silently pass since boost is managed differently on this driver
+        return 0
+      fi
+
       echo -e "  ${YELLOW}WARNING: Could not determine CPU boost status${NC}"
       echo -e "  ${YELLOW}This might be due to the system not supporting CPU boost or using a different method${NC}"
       return 0  # Don't count as failure since we can't determine for sure
@@ -1571,8 +1583,8 @@ check_cstates_disabled() {
       return 1
     fi
   else
-    echo -e "  ${YELLOW}WARNING: Unable to determine C-state status from sysfs${NC}"
-    echo -e "  ${YELLOW}Check kernel parameters for max_cstate settings${NC}"
+    # cpuidle subsystem not available (common on AMD EPYC with amd-pstate-epp)
+    # Silently pass since traditional C-state controls don't apply
     return 0
   fi
 }
