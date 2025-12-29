@@ -1379,28 +1379,40 @@ fi
 check_nic_ring_buffers() {
   echo -e "\n${YELLOW}=== Network Interface Ring Buffers ===${NC}"
   echo -e "${BLUE}Checking NIC ring buffer sizes...${NC}"
-  
+
   local issues=0
   local total_nics=0
-  
+
   # Check if ethtool is available
   if ! command -v ethtool &> /dev/null; then
     echo -e "  ${RED}FAIL: ethtool is not installed${NC}"
     echo -e "  ${YELLOW}Install with: apt-get install ethtool (Debian/Ubuntu) or yum install ethtool (RHEL/CentOS)${NC}"
     return 1
   fi
-  
+
+  # Get excluded NICs from config file
+  local excluded_nics=""
+  if [ -f "$CONFIG_FILE" ]; then
+    excluded_nics=$(jq -r '.systemChecks.network.excludedNics // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+  fi
+
   # Get all physical network interfaces (excluding lo, veth, docker, etc.)
   for nic in /sys/class/net/*; do
     nic_name=$(basename "$nic")
-    
+
     # Skip virtual interfaces
-    if [[ "$nic_name" == "lo" ]] || [[ "$nic_name" == veth* ]] || [[ "$nic_name" == docker* ]] || 
+    if [[ "$nic_name" == "lo" ]] || [[ "$nic_name" == veth* ]] || [[ "$nic_name" == docker* ]] ||
        [[ "$nic_name" == br-* ]] || [[ "$nic_name" == virbr* ]] || [[ "$nic_name" == tun* ]] ||
        [[ "$nic_name" == tap* ]]; then
       continue
     fi
-    
+
+    # Skip NICs in the exclusion list from config
+    if echo "$excluded_nics" | grep -qx "$nic_name"; then
+      echo -e "  ${YELLOW}SKIPPED: $nic_name (excluded in config)${NC}"
+      continue
+    fi
+
     # Check if it's a physical interface
     if [ ! -d "/sys/class/net/$nic_name/device" ]; then
       continue

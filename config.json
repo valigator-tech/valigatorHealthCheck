@@ -47,6 +47,9 @@
     },
     "storage": {
       "maxNvmeWearPercent": 80
+    },
+    "network": {
+      "excludedNics": []
     }
   },
   "sysctlChecks": {
