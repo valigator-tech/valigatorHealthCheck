@@ -1839,6 +1839,71 @@ else
   echo -e "${BLUE}Checking NVMe drive wear levels... ${YELLOW}[SKIPPED]${NC}"
 fi
 
+# Function to check GRUB command line parameters
+check_grub_cmdline() {
+  echo -e "\n${YELLOW}=== GRUB Configuration ===${NC}"
+  echo -e "${BLUE}Checking GRUB command line parameters...${NC}"
+
+  local grub_file="/etc/default/grub"
+  local issues=0
+
+  # Check if the GRUB config file exists
+  if [ ! -f "$grub_file" ]; then
+    echo -e "  ${RED}FAIL: GRUB configuration file not found at $grub_file${NC}"
+    return 1
+  fi
+
+  # Extract the GRUB_CMDLINE_LINUX_DEFAULT line
+  local cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null)
+
+  if [ -z "$cmdline_default" ]; then
+    echo -e "  ${RED}FAIL: GRUB_CMDLINE_LINUX_DEFAULT not found in $grub_file${NC}"
+    return 1
+  fi
+
+  # Get required parameters from config
+  local required_params=""
+  if [ -f "$CONFIG_FILE" ]; then
+    required_params=$(jq -r '.systemChecks.grub.requiredParams // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+  fi
+
+  if [ -z "$required_params" ]; then
+    echo -e "  ${YELLOW}WARNING: No required GRUB parameters configured in config file${NC}"
+    return 0
+  fi
+
+  # Check each required parameter
+  while IFS= read -r param; do
+    if echo "$cmdline_default" | grep -q "$param"; then
+      echo -e "  ${GREEN}PASS: '$param' found in GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+    else
+      echo -e "  ${RED}FAIL: '$param' missing from GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+      ((issues++))
+    fi
+  done <<< "$required_params"
+
+  if [ $issues -eq 0 ]; then
+    echo -e "  ${GREEN}PASS: All required GRUB parameters are present${NC}"
+    return 0
+  else
+    echo -e "  ${RED}FAIL: $issues required GRUB parameter(s) missing${NC}"
+    echo -e "  ${YELLOW}Edit $grub_file and add missing parameters to GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+    echo -e "  ${YELLOW}Then run: sudo update-grub${NC}"
+    return 1
+  fi
+}
+
+# Check GRUB command line parameters if enabled in config
+if should_run_check "grubCmdline"; then
+  if ! check_grub_cmdline; then
+    ((failures++))
+    failed_checks+=("GRUB Configuration: Command Line Parameters")
+  fi
+else
+  echo -e "\n${YELLOW}=== GRUB Configuration ===${NC}"
+  echo -e "${BLUE}Checking GRUB command line parameters... ${YELLOW}[SKIPPED]${NC}"
+fi
+
 # Summary - Always show this part even in quiet mode
 if [ "$QUIET_MODE" = true ]; then
   # Restore stdout for the summary

@@ -62,6 +62,7 @@ sudo ./health_check.sh -h                 # Help
 | NIC Ring Buffers | `nicRingBuffers` | Verifies network interface ring buffers are at maximum |
 | Ethtool Service | `ethtoolService` | Checks ethtool-ring-buffers.service is active |
 | NVMe Wear | `nvmeWear` | Monitors NVMe drive wear levels against threshold |
+| GRUB Cmdline | `grubCmdline` | Verifies required parameters exist in GRUB_CMDLINE_LINUX_DEFAULT |
 
 **NIC Exclusion**: Network interfaces can be excluded from ring buffer checks via config:
 ```json

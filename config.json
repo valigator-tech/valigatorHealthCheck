@@ -19,7 +19,8 @@
     "nicRingBuffers": true,
     "ethtoolService": true,
     "nvmeWear": true,
-    "requiredPackages": true
+    "requiredPackages": true,
+    "grubCmdline": true
   },
   "systemChecks": {
     "cpu": {
@@ -50,6 +51,12 @@
     },
     "network": {
       "excludedNics": []
+    },
+    "grub": {
+      "requiredParams": [
+        "audit=1",
+        "audit_backlog_limit=8192"
+      ]
     }
   },
   "sysctlChecks": {
