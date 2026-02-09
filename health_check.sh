@@ -1861,26 +1861,21 @@ check_grub_cmdline() {
     return 1
   fi
 
-  # Get required parameters from config
-  local required_params=""
-  if [ -f "$CONFIG_FILE" ]; then
-    required_params=$(jq -r '.systemChecks.grub.requiredParams // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
-  fi
-
-  if [ -z "$required_params" ]; then
-    echo -e "  ${YELLOW}WARNING: No required GRUB parameters configured in config file${NC}"
-    return 0
-  fi
+  # Default required GRUB parameters
+  local required_params=(
+    "audit=1"
+    "audit_backlog_limit=8192"
+  )
 
   # Check each required parameter
-  while IFS= read -r param; do
+  for param in "${required_params[@]}"; do
     if echo "$cmdline_default" | grep -q "$param"; then
       echo -e "  ${GREEN}PASS: '$param' found in GRUB_CMDLINE_LINUX_DEFAULT${NC}"
     else
       echo -e "  ${RED}FAIL: '$param' missing from GRUB_CMDLINE_LINUX_DEFAULT${NC}"
       ((issues++))
     fi
-  done <<< "$required_params"
+  done
 
   if [ $issues -eq 0 ]; then
     echo -e "  ${GREEN}PASS: All required GRUB parameters are present${NC}"

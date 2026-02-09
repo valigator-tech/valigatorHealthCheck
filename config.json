@@ -51,12 +51,6 @@
     },
     "network": {
       "excludedNics": []
-    },
-    "grub": {
-      "requiredParams": [
-        "audit=1",
-        "audit_backlog_limit=8192"
-      ]
     }
   },
   "sysctlChecks": {
