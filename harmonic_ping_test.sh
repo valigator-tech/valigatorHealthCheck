@@ -2,8 +2,15 @@
 
 # Define hosts to ping
 HOSTS=(
+    #EU
     "ams.auction.harmonic.gg"
+    "lon.auction.harmonic.gg"
+    "fra.auction.harmonic.gg"
+    #US
     "ewr.auction.harmonic.gg"
+    #ASIA
+    "tyo.auction.harmonic.gg"
+    "sgp.auction.harmonic.gg"
 )
 
 # Number of pings to send
