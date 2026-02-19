@@ -41,6 +41,28 @@ SHRED_LABELS=(
 
 # Number of pings to send
 COUNT=5
+FULL=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --full|-f)
+            FULL=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--full|-f]"
+            echo "  Default: ping Auction Engine endpoints only"
+            echo "  --full, -f: ping all endpoints (Auction + TPU Relayer + Shred Receiver)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--full|-f]"
+            exit 1
+            ;;
+    esac
+done
 
 run_ping() {
     local host="$1"
@@ -78,20 +100,22 @@ for host in "${AUCTION_HOSTS[@]}"; do
     run_ping "$host"
 done
 
-# --- TPU Relayer ---
-echo ""
-echo "=== Harmonic TPU Relayer ==="
-printf "%-50s %-8s %-8s %-8s %-8s\n" "Host" "Min" "Avg" "Max" "Loss%"
-printf "%s\n" "--------------------------------------------------------------------------------------------"
-for host in "${TPU_HOSTS[@]}"; do
-    run_ping "$host"
-done
+if [ "$FULL" = true ]; then
+    # --- TPU Relayer ---
+    echo ""
+    echo "=== Harmonic TPU Relayer ==="
+    printf "%-50s %-8s %-8s %-8s %-8s\n" "Host" "Min" "Avg" "Max" "Loss%"
+    printf "%s\n" "--------------------------------------------------------------------------------------------"
+    for host in "${TPU_HOSTS[@]}"; do
+        run_ping "$host"
+    done
 
-# --- Shred Receiver ---
-echo ""
-echo "=== Harmonic Shred Receiver ==="
-printf "%-50s %-8s %-8s %-8s %-8s\n" "Host" "Min" "Avg" "Max" "Loss%"
-printf "%s\n" "--------------------------------------------------------------------------------------------"
-for i in "${!SHRED_HOSTS[@]}"; do
-    run_ping "${SHRED_HOSTS[$i]}" "${SHRED_LABELS[$i]}"
-done
+    # --- Shred Receiver ---
+    echo ""
+    echo "=== Harmonic Shred Receiver ==="
+    printf "%-50s %-8s %-8s %-8s %-8s\n" "Host" "Min" "Avg" "Max" "Loss%"
+    printf "%s\n" "--------------------------------------------------------------------------------------------"
+    for i in "${!SHRED_HOSTS[@]}"; do
+        run_ping "${SHRED_HOSTS[$i]}" "${SHRED_LABELS[$i]}"
+    done
+fi
