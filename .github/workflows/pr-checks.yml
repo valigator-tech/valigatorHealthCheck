@@ -1,0 +1,68 @@
+# PR Checks — Caller Workflow
+# Place this in each project repo: .github/workflows/pr-checks.yml
+#
+# Toggle which check suites to enable for this repo by setting
+# the flags below to true/false. This calls the reusable workflows
+# from your org's central .github repo.
+#
+# Job toggles are set by enforce_tier.py based on repo languages.
+
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Python Checks ──────────────────────────────────────────────────
+  python-checks:
+    if: false  # Set to false if this repo has no Python code
+    uses: valigator-tech/.github/.github/workflows/reusable-python-checks.yml@main
+    with:
+      python-version: "3.12"
+      requirements-file: "requirements.txt"
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+  # ── Bash Checks ────────────────────────────────────────────────────
+  bash-checks:
+    if: true  # Set to false if this repo has no shell scripts
+    uses: valigator-tech/.github/.github/workflows/reusable-bash-checks.yml@main
+    with:
+      shellcheck-severity: "warning"
+    permissions:
+      contents: read
+
+  # ── Ansible Checks ─────────────────────────────────────────────────
+  ansible-checks:
+    if: false  # Set to true for repos containing Ansible code
+    uses: valigator-tech/.github/.github/workflows/reusable-ansible-checks.yml@main
+    with:
+      profile: "moderate"
+    permissions:
+      contents: read
+
+  # ── Secrets Detection ──────────────────────────────────────────────
+  secrets-check:
+    if: true  # Should almost always be true
+    uses: valigator-tech/.github/.github/workflows/reusable-secrets-check.yml@main
+    permissions:
+      contents: read
+
+  # ── Merge Gate ────────────────────────────────────────────────────
+  # This job produces a consistent "pr-checks" status check name
+  # that org rulesets can require across all repos.
+  pr-checks:
+    if: always()
+    needs: [bash-checks, secrets-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more checks failed"
+            exit 1
+          fi
+          echo "All checks passed"
