@@ -167,7 +167,8 @@ get_config() {
 # Function to check if a specific check should be run
 should_run_check() {
   local check_name="$1"
-  local result=$(get_config ".checksToRun.$check_name" "true")
+  local result
+  result=$(get_config ".checksToRun.$check_name" "true")
   
   # Convert to lowercase for standardization
   result=$(echo "$result" | tr '[:upper:]' '[:lower:]')
@@ -326,7 +327,8 @@ check_sysctl() {
 
 # Function to check CPU governor mode
 check_cpu_governor() {
-  local expected=$(get_config '.systemChecks.cpu.governor' "performance")
+  local expected
+  expected=$(get_config '.systemChecks.cpu.governor' "performance")
   local mismatched_cpus=()
   local busy_cpus=()
   local total_cpus=0
@@ -410,7 +412,7 @@ if should_run_check "sysctlParams"; then
     echo -e "\n${YELLOW}=== $category ===${NC}"
     
     # Get all parameters in this category
-    params=(${check_categories[$category]})
+    read -ra params <<< "${check_categories[$category]}"
     
     # Run each check in this category
     for param in "${params[@]}"; do
@@ -447,15 +449,13 @@ check_fail2ban() {
     enabled_status="${GREEN}enabled${NC}"
   else
     enabled_status="${RED}disabled${NC}"
-    enabled_ok=false
   fi
-  
+
   # Check if fail2ban is running
   if systemctl is-active fail2ban &> /dev/null; then
     active_status="${GREEN}running${NC}"
   else
     active_status="${RED}stopped${NC}"
-    active_ok=false
   fi
   
   # Display status
@@ -483,7 +483,8 @@ fi
 
 # Function to check if swap is disabled
 check_swap_disabled() {
-  local swap_should_be_enabled=$(get_config '.systemChecks.memory.swapEnabled' "false")
+  local swap_should_be_enabled
+  swap_should_be_enabled=$(get_config '.systemChecks.memory.swapEnabled' "false")
   local expected_status
   
   if [ "$swap_should_be_enabled" = "true" ]; then
@@ -543,7 +544,8 @@ fi
 
 # Function to check if CPU boost is enabled
 check_cpu_boost() {
-  local expected_status=$(get_config '.systemChecks.cpu.boost' "enabled")
+  local expected_status
+  expected_status=$(get_config '.systemChecks.cpu.boost' "enabled")
   
   echo -e "\n${YELLOW}=== CPU Performance ===${NC}"
   echo -e "${BLUE}Checking CPU boost status...${NC}"
@@ -646,7 +648,8 @@ check_package_updates() {
   echo -e "\n${YELLOW}=== System Updates ===${NC}"
   echo -e "${BLUE}Checking pending package updates...${NC}"
   
-  local max_allowed_updates=$(get_config '.systemChecks.updates.maxPendingUpdates' "5")
+  local max_allowed_updates
+  max_allowed_updates=$(get_config '.systemChecks.updates.maxPendingUpdates' "5")
   local update_count=0
   local pkgmanager=""
   
@@ -689,7 +692,8 @@ check_package_updates() {
 
 # Function to check if p-state driver is being used
 check_pstate_driver() {
-  local expected_driver=$(get_config '.systemChecks.cpu.driver' "pstate")
+  local expected_driver
+  expected_driver=$(get_config '.systemChecks.cpu.driver' "pstate")
   
   echo -e "\n${YELLOW}=== CPU Driver ===${NC}"
   echo -e "${BLUE}Checking CPU scaling driver...${NC}"
@@ -1137,7 +1141,8 @@ check_required_packages() {
     fi
 
     # Check if rsyslog service is healthy (not in failed state)
-    local rsyslog_status=$(systemctl is-failed rsyslog 2>/dev/null)
+    local rsyslog_status
+    rsyslog_status=$(systemctl is-failed rsyslog 2>/dev/null)
     if [ "$rsyslog_status" = "failed" ]; then
       echo -e "  ${RED}FAIL: rsyslog service is in failed state${NC}"
       ((issues++))
@@ -1168,7 +1173,8 @@ fi
 
 # Function to check if unattended upgrades are disabled or enabled based on config
 check_unattended_upgrades_disabled() {
-  local unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")
+  local unattended_upgrades_allowed
+  unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")
   local expected_status
   
   if [ "$unattended_upgrades_allowed" = "true" ]; then
@@ -1251,7 +1257,7 @@ check_unattended_upgrades_disabled() {
   fi
   
   # Check for yum-cron on RHEL/CentOS/Fedora systems
-  if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null 2>/dev/null; then
+  if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null; then
     if systemctl is-active --quiet yum-cron; then
       enabled=true
       if [ "$expected_status" = "disabled" ]; then
@@ -1269,7 +1275,7 @@ check_unattended_upgrades_disabled() {
   fi
   
   # Check for dnf-automatic on newer RHEL/Fedora systems
-  if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null 2>/dev/null; then
+  if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null; then
     if systemctl is-active --quiet dnf-automatic.timer; then
       enabled=true
       if [ "$expected_status" = "disabled" ]; then
@@ -1559,8 +1565,6 @@ check_cstates_disabled() {
   echo -e "\n${YELLOW}=== CPU C-State Configuration ===${NC}"
   echo -e "${BLUE}Checking C-state status...${NC}"
   
-  local cstates_enabled=false
-  
   # Check kernel command line for intel_idle.max_cstate
   if grep -q "intel_idle.max_cstate=0" /proc/cmdline; then
     echo -e "  ${GREEN}PASS: C-states disabled via kernel parameter (intel_idle.max_cstate=0)${NC}"
@@ -1625,7 +1629,8 @@ check_amd_pstate_epp() {
   # Check EPP settings
   local epp_file="/sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference"
   if [ -f "$epp_file" ]; then
-    local epp_value=$(cat "$epp_file")
+    local epp_value
+    epp_value=$(cat "$epp_file")
     if [ "$epp_value" = "performance" ]; then
       echo -e "  ${GREEN}PASS: EPP set to performance mode${NC}"
       return 0
@@ -1648,7 +1653,8 @@ check_isolated_cpus() {
   
   # Check kernel command line for isolcpus
   if grep -q "isolcpus=" /proc/cmdline; then
-    local isolated=$(grep -o "isolcpus=[^ ]*" /proc/cmdline | cut -d= -f2)
+    local isolated
+    isolated=$(grep -o "isolcpus=[^ ]*" /proc/cmdline | cut -d= -f2)
     echo -e "  ${GREEN}PASS: CPU cores isolated: $isolated${NC}"
     return 0
   else
@@ -1671,13 +1677,15 @@ check_cpu_power_limits() {
     for pkg in "$rapl_base"/intel-rapl:*; do
       if [ -d "$pkg" ] && [[ "$pkg" == *":0"* ]]; then
         if [ -f "$pkg/constraint_0_power_limit_uw" ]; then
-          local limit=$(cat "$pkg/constraint_0_power_limit_uw")
+          local limit
+          limit=$(cat "$pkg/constraint_0_power_limit_uw")
           local limit_watts=$((limit / 1000000))
           echo -e "  Package power limit: ${YELLOW}${limit_watts}W${NC}"
         fi
         
         if [ -f "$pkg/enabled" ]; then
-          local enabled=$(cat "$pkg/enabled")
+          local enabled
+          enabled=$(cat "$pkg/enabled")
           if [ "$enabled" -eq 1 ]; then
             echo -e "  ${YELLOW}WARNING: Power limits are enabled${NC}"
             echo -e "  ${YELLOW}This may limit performance under heavy load${NC}"
@@ -1699,7 +1707,8 @@ check_nvme_wear() {
   echo -e "\n${YELLOW}=== NVMe Drive Health ===${NC}"
   echo -e "${BLUE}Checking NVMe drive wear levels...${NC}"
   
-  local max_wear_threshold=$(get_config '.systemChecks.storage.maxNvmeWearPercent' "80")
+  local max_wear_threshold
+  max_wear_threshold=$(get_config '.systemChecks.storage.maxNvmeWearPercent' "80")
   local issues=0
   local total_drives=0
   local nvme_found=false
@@ -1854,7 +1863,8 @@ check_grub_cmdline() {
   fi
 
   # Extract the GRUB_CMDLINE_LINUX_DEFAULT line
-  local cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null)
+  local cmdline_default
+  cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null)
 
   if [ -z "$cmdline_default" ]; then
     echo -e "  ${RED}FAIL: GRUB_CMDLINE_LINUX_DEFAULT not found in $grub_file${NC}"

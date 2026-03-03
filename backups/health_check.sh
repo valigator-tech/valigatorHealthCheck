@@ -155,7 +155,8 @@ get_config() {
 # Function to check if a specific check should be run
 should_run_check() {
   local check_name="$1"
-  local result=$(get_config ".checksToRun.$check_name" "true")
+  local result
+  result=$(get_config ".checksToRun.$check_name" "true")
   
   # Convert to lowercase for standardization
   result=$(echo "$result" | tr '[:upper:]' '[:lower:]')
@@ -314,7 +315,8 @@ check_sysctl() {
 
 # Function to check CPU governor mode
 check_cpu_governor() {
-  local expected=$(get_config '.systemChecks.cpu.governor' "performance")
+  local expected
+  expected=$(get_config '.systemChecks.cpu.governor' "performance")
   local mismatched_cpus=()
   local busy_cpus=()
   local total_cpus=0
@@ -398,7 +400,7 @@ if should_run_check "sysctlParams"; then
     echo -e "\n${YELLOW}=== $category ===${NC}"
     
     # Get all parameters in this category
-    params=(${check_categories[$category]})
+    read -ra params <<< "${check_categories[$category]}"
     
     # Run each check in this category
     for param in "${params[@]}"; do
@@ -435,7 +437,6 @@ check_fail2ban() {
     enabled_status="${GREEN}enabled${NC}"
   else
     enabled_status="${RED}disabled${NC}"
-    enabled_ok=false
   fi
   
   # Check if fail2ban is running
@@ -443,7 +444,6 @@ check_fail2ban() {
     active_status="${GREEN}running${NC}"
   else
     active_status="${RED}stopped${NC}"
-    active_ok=false
   fi
   
   # Display status
@@ -471,7 +471,8 @@ fi
 
 # Function to check if swap is disabled
 check_swap_disabled() {
-  local swap_should_be_enabled=$(get_config '.systemChecks.memory.swapEnabled' "false")
+  local swap_should_be_enabled
+  swap_should_be_enabled=$(get_config '.systemChecks.memory.swapEnabled' "false")
   local expected_status
   
   if [ "$swap_should_be_enabled" = "true" ]; then
@@ -531,7 +532,8 @@ fi
 
 # Function to check if CPU boost is enabled
 check_cpu_boost() {
-  local expected_status=$(get_config '.systemChecks.cpu.boost' "enabled")
+  local expected_status
+  expected_status=$(get_config '.systemChecks.cpu.boost' "enabled")
   
   echo -e "\n${YELLOW}=== CPU Performance ===${NC}"
   echo -e "${BLUE}Checking CPU boost status...${NC}"
@@ -622,7 +624,8 @@ check_package_updates() {
   echo -e "\n${YELLOW}=== System Updates ===${NC}"
   echo -e "${BLUE}Checking pending package updates...${NC}"
   
-  local max_allowed_updates=$(get_config '.systemChecks.updates.maxPendingUpdates' "5")
+  local max_allowed_updates
+  max_allowed_updates=$(get_config '.systemChecks.updates.maxPendingUpdates' "5")
   local update_count=0
   local pkgmanager=""
   
@@ -665,7 +668,8 @@ check_package_updates() {
 
 # Function to check if p-state driver is being used
 check_pstate_driver() {
-  local expected_driver=$(get_config '.systemChecks.cpu.driver' "pstate")
+  local expected_driver
+  expected_driver=$(get_config '.systemChecks.cpu.driver' "pstate")
   
   echo -e "\n${YELLOW}=== CPU Driver ===${NC}"
   echo -e "${BLUE}Checking CPU scaling driver...${NC}"
@@ -984,7 +988,8 @@ fi
 
 # Function to check if unattended upgrades are disabled or enabled based on config
 check_unattended_upgrades_disabled() {
-  local unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")
+  local unattended_upgrades_allowed
+  unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")
   local expected_status
   
   if [ "$unattended_upgrades_allowed" = "true" ]; then
@@ -1067,7 +1072,7 @@ check_unattended_upgrades_disabled() {
   fi
   
   # Check for yum-cron on RHEL/CentOS/Fedora systems
-  if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null 2>/dev/null; then
+  if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null; then
     if systemctl is-active --quiet yum-cron; then
       enabled=true
       if [ "$expected_status" = "disabled" ]; then
@@ -1085,7 +1090,7 @@ check_unattended_upgrades_disabled() {
   fi
   
   # Check for dnf-automatic on newer RHEL/Fedora systems
-  if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null 2>/dev/null; then
+  if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null; then
     if systemctl is-active --quiet dnf-automatic.timer; then
       enabled=true
       if [ "$expected_status" = "disabled" ]; then
