@@ -155,7 +155,8 @@ get_config() {
 # Function to check if a specific check should be run
 should_run_check() {
   local check_name="$1"
-  local result=$(get_config ".checksToRun.$check_name" "true")
+  local result
+  result=$(get_config ".checksToRun.$check_name" "true")
   
   # Convert to lowercase for standardization
   result=$(echo "$result" | tr '[:upper:]' '[:lower:]')
@@ -314,7 +315,8 @@ check_sysctl() {
 
 # Function to check CPU governor mode
 check_cpu_governor() {
-  local expected=$(get_config '.systemChecks.cpu.governor' "performance")
+  local expected
+  expected=$(get_config '.systemChecks.cpu.governor' "performance")
   local mismatched_cpus=()
   local busy_cpus=()
   local total_cpus=0
@@ -398,7 +400,7 @@ if should_run_check "sysctlParams"; then
     echo -e "\n${YELLOW}=== $category ===${NC}"
     
     # Get all parameters in this category
-    params=(${check_categories[$category]})
+    read -ra params <<< "${check_categories[$category]}"
     
     # Run each check in this category
     for param in "${params[@]}"; do
@@ -435,7 +437,6 @@ check_fail2ban() {
     enabled_status="${GREEN}enabled${NC}"
   else
     enabled_status="${RED}disabled${NC}"
-    enabled_ok=false
   fi
   
   # Check if fail2ban is running
@@ -443,7 +444,6 @@ check_fail2ban() {
     active_status="${GREEN}running${NC}"
   else
     active_status="${RED}stopped${NC}"
-    active_ok=false
   fi
   
   # Display status
@@ -471,7 +471,8 @@ fi
 
 # Function to check if swap is disabled
 check_swap_disabled() {
-  local swap_should_be_enabled=$(get_config '.systemChecks.memory.swapEnabled' "false")
+  local swap_should_be_enabled
+  swap_should_be_enabled=$(get_config '.systemChecks.memory.swapEnabled' "false")
   local expected_status
   
   if [ "$swap_should_be_enabled" = "true" ]; then

@@ -1671,13 +1671,15 @@ check_cpu_power_limits() {
     for pkg in "$rapl_base"/intel-rapl:*; do
       if [ -d "$pkg" ] && [[ "$pkg" == *":0"* ]]; then
         if [ -f "$pkg/constraint_0_power_limit_uw" ]; then
-          local limit=$(cat "$pkg/constraint_0_power_limit_uw")
+          local limit
+          limit=$(cat "$pkg/constraint_0_power_limit_uw")
           local limit_watts=$((limit / 1000000))
           echo -e "  Package power limit: ${YELLOW}${limit_watts}W${NC}"
         fi
         
         if [ -f "$pkg/enabled" ]; then
-          local enabled=$(cat "$pkg/enabled")
+          local enabled
+          enabled=$(cat "$pkg/enabled")
           if [ "$enabled" -eq 1 ]; then
             echo -e "  ${YELLOW}WARNING: Power limits are enabled${NC}"
             echo -e "  ${YELLOW}This may limit performance under heavy load${NC}"
@@ -1699,7 +1701,8 @@ check_nvme_wear() {
   echo -e "\n${YELLOW}=== NVMe Drive Health ===${NC}"
   echo -e "${BLUE}Checking NVMe drive wear levels...${NC}"
   
-  local max_wear_threshold=$(get_config '.systemChecks.storage.maxNvmeWearPercent' "80")
+  local max_wear_threshold
+  max_wear_threshold=$(get_config '.systemChecks.storage.maxNvmeWearPercent' "80")
   local issues=0
   local total_drives=0
   local nvme_found=false
@@ -1854,7 +1857,8 @@ check_grub_cmdline() {
   fi
 
   # Extract the GRUB_CMDLINE_LINUX_DEFAULT line
-  local cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null)
+  local cmdline_default
+  cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null)
 
   if [ -z "$cmdline_default" ]; then
     echo -e "  ${RED}FAIL: GRUB_CMDLINE_LINUX_DEFAULT not found in $grub_file${NC}"
