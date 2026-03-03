@@ -532,7 +532,8 @@ fi
 
 # Function to check if CPU boost is enabled
 check_cpu_boost() {
-  local expected_status=$(get_config '.systemChecks.cpu.boost' "enabled")
+  local expected_status
+  expected_status=$(get_config '.systemChecks.cpu.boost' "enabled")
   
   echo -e "\n${YELLOW}=== CPU Performance ===${NC}"
   echo -e "${BLUE}Checking CPU boost status...${NC}"
@@ -623,7 +624,8 @@ check_package_updates() {
   echo -e "\n${YELLOW}=== System Updates ===${NC}"
   echo -e "${BLUE}Checking pending package updates...${NC}"
   
-  local max_allowed_updates=$(get_config '.systemChecks.updates.maxPendingUpdates' "5")
+  local max_allowed_updates
+  max_allowed_updates=$(get_config '.systemChecks.updates.maxPendingUpdates' "5")
   local update_count=0
   local pkgmanager=""
   
@@ -666,7 +668,8 @@ check_package_updates() {
 
 # Function to check if p-state driver is being used
 check_pstate_driver() {
-  local expected_driver=$(get_config '.systemChecks.cpu.driver' "pstate")
+  local expected_driver
+  expected_driver=$(get_config '.systemChecks.cpu.driver' "pstate")
   
   echo -e "\n${YELLOW}=== CPU Driver ===${NC}"
   echo -e "${BLUE}Checking CPU scaling driver...${NC}"
@@ -985,7 +988,8 @@ fi
 
 # Function to check if unattended upgrades are disabled or enabled based on config
 check_unattended_upgrades_disabled() {
-  local unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")
+  local unattended_upgrades_allowed
+  unattended_upgrades_allowed=$(get_config '.systemChecks.updates.unattendedUpgrades' "false")
   local expected_status
   
   if [ "$unattended_upgrades_allowed" = "true" ]; then
@@ -1068,7 +1072,7 @@ check_unattended_upgrades_disabled() {
   fi
   
   # Check for yum-cron on RHEL/CentOS/Fedora systems
-  if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null 2>/dev/null; then
+  if command -v yum &> /dev/null && rpm -q yum-cron &> /dev/null; then
     if systemctl is-active --quiet yum-cron; then
       enabled=true
       if [ "$expected_status" = "disabled" ]; then
@@ -1086,7 +1090,7 @@ check_unattended_upgrades_disabled() {
   fi
   
   # Check for dnf-automatic on newer RHEL/Fedora systems
-  if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null 2>/dev/null; then
+  if command -v dnf &> /dev/null && rpm -q dnf-automatic &> /dev/null; then
     if systemctl is-active --quiet dnf-automatic.timer; then
       enabled=true
       if [ "$expected_status" = "disabled" ]; then
