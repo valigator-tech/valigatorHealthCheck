@@ -51,17 +51,6 @@ jobs:
     permissions:
       contents: read
 
-  # ── CodeQL Analysis ────────────────────────────────────────────────
-  codeql:
-    if: false  # Set based on CodeQL-supported languages
-    uses: valigator-tech/.github/.github/workflows/reusable-codeql.yml@main
-    with:
-      languages: '[]'
-    permissions:
-      security-events: write
-      contents: read
-      actions: read
-
   # ── Merge Gate ────────────────────────────────────────────────────
   # This job produces a consistent "pr-checks" status check name
   # that org rulesets can require across all repos.
