@@ -762,7 +762,7 @@ else
 fi
 
 # Function to check NTP synchronization status
-# This check requires systemd-timesyncd and will fail if chrony/ntpd is used instead
+# Passes if systemd-timesyncd, chrony, or ntpd is active AND time is synchronized
 check_ntp_sync() {
   echo -e "\n${YELLOW}=== Time Synchronization ===${NC}"
   echo -e "${BLUE}Checking time sync service...${NC}"
@@ -772,6 +772,8 @@ check_ntp_sync() {
   local chrony_active=false
   local ntpd_active=false
   local openntpd_active=false
+  local service_found=false
+  local sync_ok=false
 
   # Check which NTP services are running
   if command -v systemctl &> /dev/null; then
@@ -796,54 +798,131 @@ check_ntp_sync() {
   # Display current sync method
   echo -e "  Current time sync: ${YELLOW}$sync_method${NC}"
 
-  # Check if systemd-timesyncd is active (required)
+  # Check for an accepted NTP service
   if [ "$timesyncd_active" = true ]; then
+    service_found=true
     echo -e "  ${GREEN}PASS: systemd-timesyncd is active${NC}"
+  elif [ "$chrony_active" = true ]; then
+    service_found=true
+    echo -e "  ${GREEN}PASS: chrony is active${NC}"
+  elif [ "$ntpd_active" = true ]; then
+    service_found=true
+    echo -e "  ${GREEN}PASS: ntpd is active${NC}"
+  elif [ "$openntpd_active" = true ]; then
+    echo -e "  ${RED}FAIL: System is using OpenNTPD which is not a recommended NTP service${NC}"
+    echo -e "  Expected: ${GREEN}systemd-timesyncd, chrony, or ntpd${NC}"
+    echo -e "  ${YELLOW}To fix (choose one):${NC}"
+    echo -e "    sudo systemctl stop openntpd && sudo systemctl disable openntpd"
+    echo -e "    sudo systemctl enable systemd-timesyncd && sudo systemctl start systemd-timesyncd"
+    return 1
+  else
+    echo -e "  ${RED}FAIL: No time synchronization service detected${NC}"
+    echo -e "  Expected: ${GREEN}systemd-timesyncd, chrony, or ntpd${NC}"
+    echo -e "  ${YELLOW}To fix (choose one):${NC}"
+    echo -e "    sudo systemctl enable systemd-timesyncd && sudo systemctl start systemd-timesyncd"
+    return 1
+  fi
+
+  # Verify the clock is actually synchronized
+  echo -e "${BLUE}Checking time synchronization status...${NC}"
+
+  if [ "$timesyncd_active" = true ]; then
+    # Check via timedatectl for systemd-timesyncd
+    local timesync_output
+    timesync_output=$(timedatectl show --property=NTPSynchronized 2>&1)
+    if echo "$timesync_output" | grep -q "NTPSynchronized=yes"; then
+      sync_ok=true
+      echo -e "  ${GREEN}PASS: System clock is synchronized (systemd-timesyncd)${NC}"
+    else
+      echo -e "  ${RED}FAIL: systemd-timesyncd is running but clock is NOT synchronized${NC}"
+      echo -e "  timedatectl reports: ${YELLOW}${timesync_output}${NC}"
+      echo -e "  ${YELLOW}To investigate:${NC}"
+      echo -e "    timedatectl timesync-status"
+      echo -e "    systemctl status systemd-timesyncd"
+      return 1
+    fi
+
+  elif [ "$chrony_active" = true ]; then
+    # Check via chronyc for chrony
+    if command -v chronyc &> /dev/null; then
+      local chrony_output
+      chrony_output=$(chronyc tracking 2>&1)
+      if [ $? -ne 0 ]; then
+        echo -e "  ${RED}FAIL: chrony is running but 'chronyc tracking' returned an error${NC}"
+        echo -e "  Output: ${YELLOW}${chrony_output}${NC}"
+        return 1
+      fi
+      local leap_status
+      leap_status=$(echo "$chrony_output" | grep "Leap status" | awk -F: '{print $2}' | xargs)
+      if [ "$leap_status" = "Normal" ]; then
+        sync_ok=true
+        echo -e "  ${GREEN}PASS: System clock is synchronized (chrony)${NC}"
+      elif [ "$leap_status" = "Not synchronised" ]; then
+        echo -e "  ${RED}FAIL: chrony is running but clock is NOT synchronized${NC}"
+        echo -e "  Leap status: ${YELLOW}${leap_status}${NC}"
+        echo -e "  ${YELLOW}To investigate:${NC}"
+        echo -e "    chronyc tracking"
+        echo -e "    chronyc sources -v"
+        return 1
+      else
+        echo -e "  ${RED}FAIL: chrony reports unexpected leap status: ${leap_status}${NC}"
+        echo -e "  ${YELLOW}To investigate:${NC}"
+        echo -e "    chronyc tracking"
+        echo -e "    chronyc sources -v"
+        return 1
+      fi
+    else
+      echo -e "  ${RED}FAIL: chrony is running but 'chronyc' command not found to verify sync${NC}"
+      echo -e "  ${YELLOW}To fix: install chrony tools so sync status can be verified${NC}"
+      echo -e "    sudo apt install chrony"
+      return 1
+    fi
+
+  elif [ "$ntpd_active" = true ]; then
+    # Check via ntpstat or ntpq for ntpd
+    if command -v ntpstat &> /dev/null; then
+      local ntpstat_output
+      ntpstat_output=$(ntpstat 2>&1)
+      if [ $? -eq 0 ]; then
+        sync_ok=true
+        echo -e "  ${GREEN}PASS: System clock is synchronized (ntpd)${NC}"
+      else
+        echo -e "  ${RED}FAIL: ntpd is running but clock is NOT synchronized${NC}"
+        echo -e "  ntpstat output: ${YELLOW}${ntpstat_output}${NC}"
+        echo -e "  ${YELLOW}To investigate:${NC}"
+        echo -e "    ntpstat"
+        echo -e "    ntpq -p"
+        return 1
+      fi
+    elif command -v ntpq &> /dev/null; then
+      # Fall back to ntpq - check if any peer is selected (marked with *)
+      local ntpq_output
+      ntpq_output=$(ntpq -p 2>&1)
+      if [ $? -ne 0 ]; then
+        echo -e "  ${RED}FAIL: ntpd is running but 'ntpq -p' returned an error${NC}"
+        echo -e "  Output: ${YELLOW}${ntpq_output}${NC}"
+        return 1
+      fi
+      if echo "$ntpq_output" | grep -q '^\*'; then
+        sync_ok=true
+        echo -e "  ${GREEN}PASS: System clock is synchronized (ntpd)${NC}"
+      else
+        echo -e "  ${RED}FAIL: ntpd is running but no sync peer selected${NC}"
+        echo -e "  ${YELLOW}To investigate:${NC}"
+        echo -e "    ntpq -p"
+        return 1
+      fi
+    else
+      echo -e "  ${RED}FAIL: ntpd is running but neither 'ntpstat' nor 'ntpq' found to verify sync${NC}"
+      echo -e "  ${YELLOW}To fix: install NTP tools so sync status can be verified${NC}"
+      echo -e "    sudo apt install ntpstat"
+      return 1
+    fi
+  fi
+
+  if [ "$sync_ok" = true ]; then
     return 0
   fi
-
-  # Fail if using chrony instead
-  if [ "$chrony_active" = true ]; then
-    echo -e "  ${RED}FAIL: System is using chrony instead of systemd-timesyncd${NC}"
-    echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
-    echo -e "  ${YELLOW}To fix:${NC}"
-    echo -e "    sudo systemctl stop chrony"
-    echo -e "    sudo systemctl disable chrony"
-    echo -e "    sudo systemctl enable systemd-timesyncd"
-    echo -e "    sudo systemctl start systemd-timesyncd"
-    return 1
-  fi
-
-  # Fail if using ntpd instead
-  if [ "$ntpd_active" = true ]; then
-    echo -e "  ${RED}FAIL: System is using ntpd instead of systemd-timesyncd${NC}"
-    echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
-    echo -e "  ${YELLOW}To fix:${NC}"
-    echo -e "    sudo systemctl stop ntp"
-    echo -e "    sudo systemctl disable ntp"
-    echo -e "    sudo systemctl enable systemd-timesyncd"
-    echo -e "    sudo systemctl start systemd-timesyncd"
-    return 1
-  fi
-
-  # Fail if using OpenNTPD instead
-  if [ "$openntpd_active" = true ]; then
-    echo -e "  ${RED}FAIL: System is using OpenNTPD instead of systemd-timesyncd${NC}"
-    echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
-    echo -e "  ${YELLOW}To fix:${NC}"
-    echo -e "    sudo systemctl stop openntpd"
-    echo -e "    sudo systemctl disable openntpd"
-    echo -e "    sudo systemctl enable systemd-timesyncd"
-    echo -e "    sudo systemctl start systemd-timesyncd"
-    return 1
-  fi
-
-  # No NTP service detected
-  echo -e "  ${RED}FAIL: No time synchronization service detected${NC}"
-  echo -e "  Expected: ${GREEN}systemd-timesyncd${NC}"
-  echo -e "  ${YELLOW}To fix:${NC}"
-  echo -e "    sudo systemctl enable systemd-timesyncd"
-  echo -e "    sudo systemctl start systemd-timesyncd"
   return 1
 }
 

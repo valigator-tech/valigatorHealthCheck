@@ -52,7 +52,7 @@ sudo ./health_check.sh -h                 # Help
 | Fail2ban | `fail2ban` | Verifies fail2ban is installed, enabled, and running |
 | Swap Status | `swapStatus` | Confirms swap is disabled (configurable) |
 | Package Updates | `packageUpdates` | Checks pending updates against threshold (default: 5) |
-| NTP Sync | `ntpSync` | Verifies systemd-timesyncd is active |
+| NTP Sync | `ntpSync` | Verifies an accepted NTP service is active (systemd-timesyncd, chrony, or ntpd) and clock is synchronized |
 | Timezone | `timezoneUtc` | Confirms system timezone is UTC |
 | SSH Config | `sshConfig` | Validates SSH security (root login disabled, key-only auth) |
 | Required Packages | `requiredPackages` | Checks for rsyslog and ufw packages |
