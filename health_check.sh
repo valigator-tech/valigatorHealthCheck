@@ -872,10 +872,20 @@ check_ntp_sync() {
         return 1
       fi
     else
-      echo -e "  ${RED}FAIL: chrony is running but 'chronyc' command not found to verify sync${NC}"
-      echo -e "  ${YELLOW}To fix: install chrony tools so sync status can be verified${NC}"
-      echo -e "    sudo apt install chrony"
-      return 1
+      # chronyc not available, fall back to timedatectl kernel NTP sync flag
+      local timesync_output
+      timesync_output=$(timedatectl show --property=NTPSynchronized 2>&1)
+      if echo "$timesync_output" | grep -q "NTPSynchronized=yes"; then
+        sync_ok=true
+        echo -e "  ${GREEN}PASS: System clock is synchronized (chrony via timedatectl)${NC}"
+      else
+        echo -e "  ${RED}FAIL: chrony is running but clock is NOT synchronized${NC}"
+        echo -e "  ${YELLOW}To investigate, install chronyc:${NC}"
+        echo -e "    sudo apt install chrony"
+        echo -e "    chronyc tracking"
+        echo -e "    chronyc sources -v"
+        return 1
+      fi
     fi
 
   elif [ "$ntpd_active" = true ]; then
@@ -913,10 +923,19 @@ check_ntp_sync() {
         return 1
       fi
     else
-      echo -e "  ${RED}FAIL: ntpd is running but neither 'ntpstat' nor 'ntpq' found to verify sync${NC}"
-      echo -e "  ${YELLOW}To fix: install NTP tools so sync status can be verified${NC}"
-      echo -e "    sudo apt install ntpstat"
-      return 1
+      # Neither ntpstat nor ntpq available, fall back to timedatectl kernel NTP sync flag
+      local timesync_output
+      timesync_output=$(timedatectl show --property=NTPSynchronized 2>&1)
+      if echo "$timesync_output" | grep -q "NTPSynchronized=yes"; then
+        sync_ok=true
+        echo -e "  ${GREEN}PASS: System clock is synchronized (ntpd via timedatectl)${NC}"
+      else
+        echo -e "  ${RED}FAIL: ntpd is running but clock is NOT synchronized${NC}"
+        echo -e "  ${YELLOW}To investigate, install ntpstat or ntpq:${NC}"
+        echo -e "    sudo apt install ntpstat"
+        echo -e "    ntpq -p"
+        return 1
+      fi
     fi
   fi
 
