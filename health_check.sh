@@ -772,7 +772,6 @@ check_ntp_sync() {
   local chrony_active=false
   local ntpd_active=false
   local openntpd_active=false
-  local service_found=false
   local sync_ok=false
 
   # Check which NTP services are running
@@ -800,13 +799,13 @@ check_ntp_sync() {
 
   # Check for an accepted NTP service
   if [ "$timesyncd_active" = true ]; then
-    service_found=true
+
     echo -e "  ${GREEN}PASS: systemd-timesyncd is active${NC}"
   elif [ "$chrony_active" = true ]; then
-    service_found=true
+
     echo -e "  ${GREEN}PASS: chrony is active${NC}"
   elif [ "$ntpd_active" = true ]; then
-    service_found=true
+
     echo -e "  ${GREEN}PASS: ntpd is active${NC}"
   elif [ "$openntpd_active" = true ]; then
     echo -e "  ${RED}FAIL: System is using OpenNTPD which is not a recommended NTP service${NC}"
