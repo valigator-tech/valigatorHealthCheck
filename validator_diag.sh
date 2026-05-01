@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
 # validator_diag.sh — Non-impacting diagnostic report for Solana validators.
+# v2: softnet_stat, bonding, irqbalance, RPS/RFS, validator flags, range-expansion fix.
 #
-# Read-only: gathers data, performs no writes, no service restarts, no config changes.
-# One ~2-second sleep for IRQ delta sampling. Otherwise instantaneous.
-#
-# Run as root (or with sudo) for full coverage. Without root, audit state and a few
-# /proc/<pid> reads may be skipped — the script will note this and continue.
+# Read-only. One ~2-second sleep for IRQ delta sampling. Otherwise instantaneous.
+# Run as root for full coverage.
 #
 # Usage:  sudo bash validator_diag.sh
-#         sudo bash validator_diag.sh | tee val-XX-diag-$(date +%F).txt
-#
-# Exit 0 always; this is a report, not a check.
-
-# ansible val-46 -m script -a "validator_diag.sh" --become
+#         sudo bash validator_diag.sh | tee val-XX-diag-$(date +%F-%H%M).txt
 
 set -u
 
@@ -31,8 +25,6 @@ kv()      { printf '    %-32s %s\n' "$1" "$2"; }
 have()    { command -v "$1" >/dev/null 2>&1; }
 is_root() { [[ "$(id -u)" -eq 0 ]]; }
 
-# Strip non-numeric tokens from a kernel-cmdline cpu list value.
-# "domain,2,26" -> "2,26";  "managed_irq,nohz,2,26" -> "2,26";  "cpu:0-1,3-25" -> "0-1,3-25"
 clean_cpu_list() {
     local raw=$1; raw=${raw#cpu:}; local out=""
     IFS=',' read -ra parts <<< "$raw"
@@ -42,7 +34,6 @@ clean_cpu_list() {
     echo "$out"
 }
 
-# Expand "0-3,5,7-8" to "0 1 2 3 5 7 8"
 expand_cpus() {
     local list=$1; [[ -z "$list" ]] && return
     local out=()
@@ -85,23 +76,30 @@ IRQAFF_RAW=$(grep   -oE 'irqaffinity=[^ ]+' <<<"$CMDLINE" | sed 's/^irqaffinity=
 HOUSEKP_RAW=$(grep  -oE 'housekeeping=[^ ]+'<<<"$CMDLINE" | sed 's/^housekeeping=//' || true)
 
 ISO_LIST=$(clean_cpu_list   "${ISOLCPUS_RAW:-}")
-NOHZ_LIST=$(clean_cpu_list  "${NOHZFULL_RAW:-}")
-RCU_LIST=$(clean_cpu_list   "${RCUNOCBS_RAW:-}")
-IRQ_LIST=$(clean_cpu_list   "${IRQAFF_RAW:-}")
 HOUSE_LIST=$(clean_cpu_list "${HOUSEKP_RAW:-}")
 
 note "isolation params (parsed from /proc/cmdline):"
 kv "isolcpus"     "${ISOLCPUS_RAW:-(unset)}    -> [$ISO_LIST]"
-kv "nohz_full"    "${NOHZFULL_RAW:-(unset)}    -> [$NOHZ_LIST]"
-kv "rcu_nocbs"    "${RCUNOCBS_RAW:-(unset)}    -> [$RCU_LIST]"
-kv "irqaffinity"  "${IRQAFF_RAW:-(unset)}      -> [$IRQ_LIST]"
+kv "nohz_full"    "${NOHZFULL_RAW:-(unset)}    -> [$(clean_cpu_list "${NOHZFULL_RAW:-}")]"
+kv "rcu_nocbs"    "${RCUNOCBS_RAW:-(unset)}    -> [$(clean_cpu_list "${RCUNOCBS_RAW:-}")]"
+kv "irqaffinity"  "${IRQAFF_RAW:-(unset)}      -> [$(clean_cpu_list "${IRQAFF_RAW:-}")]"
 kv "housekeeping" "${HOUSEKP_RAW:-(unset)}     -> [$HOUSE_LIST]"
 
-ISO_CPUS=$(expand_cpus "$ISO_LIST")
+ISO_CPUS_RAW=$(expand_cpus "$ISO_LIST")
 HOUSE_CPUS=$(expand_cpus "$HOUSE_LIST")
 NPROC=$(nproc 2>/dev/null || echo 0)
 
-# Coverage check: every logical CPU should be in either isolated or housekeeping
+# Filter out isolated CPUs that don't actually exist
+ISO_CPUS=""
+for c in $ISO_CPUS_RAW; do
+    if [[ -d "/sys/devices/system/cpu/cpu$c" ]]; then
+        ISO_CPUS="${ISO_CPUS}${ISO_CPUS:+ }$c"
+    else
+        err "isolcpus references cpu${c} which does not exist on this system (silently ignored by kernel)"
+    fi
+done
+
+# Coverage check
 if [[ -n "$HOUSE_LIST" && -n "$ISO_LIST" && "$NPROC" -gt 0 ]]; then
     UNCOVERED=()
     for ((c=0; c<NPROC; c++)); do
@@ -112,7 +110,7 @@ if [[ -n "$HOUSE_LIST" && -n "$ISO_LIST" && "$NPROC" -gt 0 ]]; then
     if (( ${#UNCOVERED[@]} > 0 )); then
         warn "CPUs not in isolcpus and not in housekeeping: ${UNCOVERED[*]}"
     else
-        ok "all $NPROC logical CPUs are in either isolated or housekeeping pool"
+        ok "all $NPROC logical CPUs are accounted for in isolated or housekeeping pool"
     fi
 fi
 
@@ -123,20 +121,30 @@ if [[ -n "$ISO_CPUS" ]]; then
         sib_file="/sys/devices/system/cpu/cpu${c}/topology/thread_siblings_list"
         if [[ -r "$sib_file" ]]; then
             sibs=$(<"$sib_file")
-            cid=$(<"/sys/devices/system/cpu/cpu${c}/topology/core_id" 2>/dev/null || echo '?')
-            pkg=$(<"/sys/devices/system/cpu/cpu${c}/topology/physical_package_id" 2>/dev/null || echo '?')
+            cid=$(cat "/sys/devices/system/cpu/cpu${c}/topology/core_id" 2>/dev/null)
+            pkg=$(cat "/sys/devices/system/cpu/cpu${c}/topology/physical_package_id" 2>/dev/null)
+            [[ -z "$cid" ]] && cid='?'
+            [[ -z "$pkg" ]] && pkg='?'
             kv "cpu${c}" "siblings=$sibs  core_id=$cid  pkg=$pkg"
-            for s in $(tr ',' ' ' <<<"$sibs"); do
-                [[ "$s" == "$c" ]] && continue
-                if in_set "$s" "$HOUSE_CPUS"; then
-                    err "isolated cpu${c}'s SMT sibling cpu${s} is in housekeeping pool — they share L1/L2; housekeeping work will leak jitter into the isolated tile"
-                fi
-                if in_set "$s" "$ISO_CPUS"; then
-                    ok "cpu${c}'s SMT sibling cpu${s} is also isolated"
-                fi
-            done
+            if [[ "$sibs" != "$c" ]]; then
+                for s in $(tr ',' ' ' <<<"$sibs"); do
+                    [[ "$s" == "$c" ]] && continue
+                    if in_set "$s" "$HOUSE_CPUS"; then
+                        err "isolated cpu${c}'s SMT sibling cpu${s} is in housekeeping pool — shared L1/L2 will leak jitter"
+                    fi
+                done
+            else
+                ok "cpu${c} has no SMT sibling (SMT off)"
+            fi
         fi
     done
+fi
+
+# SMT global state
+if [[ -r /sys/devices/system/cpu/smt/active ]]; then
+    smt_active=$(cat /sys/devices/system/cpu/smt/active)
+    smt_control=$(cat /sys/devices/system/cpu/smt/control 2>/dev/null || echo '?')
+    kv "SMT" "active=$smt_active control=$smt_control"
 fi
 
 # ============================================================================
@@ -147,16 +155,16 @@ if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]]; then
     kv "governors (unique)" "$govs"
     case "$govs" in
         *"powersave"*|*"ondemand"*|*"conservative"*)
-            warn "non-performance governor present — adds ramp latency on idle->busy" ;;
+            warn "non-performance governor present" ;;
         *"performance"*|*"schedutil"*)
-            ok "governor looks reasonable for a validator" ;;
+            ok "governor reasonable for a validator" ;;
     esac
 fi
-[[ -r /sys/devices/system/cpu/amd_pstate/status   ]] && kv "amd_pstate status"   "$(cat /sys/devices/system/cpu/amd_pstate/status)"
-[[ -r /sys/devices/system/cpu/intel_pstate/status ]] && kv "intel_pstate status" "$(cat /sys/devices/system/cpu/intel_pstate/status)"
+[[ -r /sys/devices/system/cpu/amd_pstate/status   ]] && kv "amd_pstate"   "$(cat /sys/devices/system/cpu/amd_pstate/status)"
+[[ -r /sys/devices/system/cpu/intel_pstate/status ]] && kv "intel_pstate" "$(cat /sys/devices/system/cpu/intel_pstate/status)"
 
 if compgen -G "/sys/devices/system/cpu/cpu0/cpuidle/state*/disable" > /dev/null; then
-    note "C-states on CPU 0 (lower exit_latency = less jitter when entered):"
+    note "C-states on CPU 0:"
     for s in /sys/devices/system/cpu/cpu0/cpuidle/state*; do
         printf "    %-12s disabled=%s  exit_latency=%5s us\n" \
             "$(<"$s/name")" "$(<"$s/disable")" "$(<"$s/latency")"
@@ -170,24 +178,39 @@ if have auditctl && is_root; then
     auditctl -s 2>/dev/null | sed 's/^/    /'
     rules_file=$(mktemp)
     auditctl -l 2>/dev/null > "$rules_file"
-    rule_count=$(grep -cv '^[[:space:]]*$' "$rules_file" || echo 0)
-    kv "rule count" "$rule_count"
+    kv "rule count" "$(grep -cv '^[[:space:]]*$' "$rules_file" || echo 0)"
 
     lost=$(auditctl -s 2>/dev/null | awk '$1=="lost"{print $2}')
     backlog=$(auditctl -s 2>/dev/null | awk '$1=="backlog"{print $2}')
-    [[ "${lost:-0}"    -gt 0   ]] && warn "audit lost=${lost} (kernel had to drop events since boot)"
-    [[ "${backlog:-0}" -gt 100 ]] && warn "audit backlog=${backlog} non-trivial — userspace slow draining"
+    [[ "${lost:-0}"    -gt 0   ]] && warn "audit lost=${lost}"
+    [[ "${backlog:-0}" -gt 100 ]] && warn "audit backlog=${backlog}"
     [[ "${lost:-0}" -eq 0 && "${backlog:-0}" -lt 100 ]] && ok "audit not dropping or backlogged"
 
     if grep -qE -- '-S[[:space:]]+(send|recv|sendto|sendmsg|recvfrom|recvmsg|sendmmsg|recvmmsg|connect|accept|socket)' "$rules_file"; then
-        err "audit rules match network syscalls — likely shred-path overhead:"
+        err "audit rules match network syscalls:"
         grep -E -- '-S[[:space:]]+(send|recv|connect|accept|socket)' "$rules_file" | sed 's/^/        /'
     else
         ok "no audit rules touch network syscalls"
     fi
     rm -f "$rules_file"
 elif have auditctl; then
-    note "auditctl exists but requires root — rerun with sudo"
+    note "auditctl exists but requires root"
+fi
+
+# ============================================================================
+section "irqbalance"
+# ============================================================================
+if have systemctl; then
+    if systemctl is-active --quiet irqbalance 2>/dev/null; then
+        warn "irqbalance is RUNNING — will fight any manual IRQ affinity changes"
+        if [[ -f /etc/default/irqbalance ]]; then
+            grep -E '^(IRQBALANCE_BANNED_CPUS|IRQBALANCE_ARGS)=' /etc/default/irqbalance | sed 's/^/    /' || note "no IRQBALANCE_BANNED_CPUS configured"
+        fi
+    elif systemctl list-unit-files irqbalance.service --no-legend 2>/dev/null | grep -q irqbalance; then
+        ok "irqbalance installed but not active"
+    else
+        ok "irqbalance not installed"
+    fi
 fi
 
 # ============================================================================
@@ -198,11 +221,26 @@ for k in net.core.rmem_default net.core.rmem_max \
          net.core.netdev_max_backlog net.core.somaxconn \
          net.ipv4.udp_rmem_min net.ipv4.udp_wmem_min \
          net.ipv4.ip_local_port_range; do
-    kv "$k" "$(sysctl -n "$k" 2>/dev/null || echo "(unset)")"
+    v=$(sysctl -n "$k" 2>/dev/null || echo "(unset)")
+    v=${v//$'\t'/ }   # tab -> space
+    kv "$k" "$v"
 done
+kv "kernel.numa_balancing" "$(sysctl -n kernel.numa_balancing 2>/dev/null || echo '?')"
 
 RMEM_MAX=$(sysctl -n net.core.rmem_max 2>/dev/null || echo 0)
-(( RMEM_MAX < 134217728 )) && warn "net.core.rmem_max=$RMEM_MAX < 128 MiB (Solana docs recommend 134217728)"
+(( RMEM_MAX < 134217728 )) && warn "net.core.rmem_max=$RMEM_MAX < 128 MiB"
+
+NETDEV_BL=$(sysctl -n net.core.netdev_max_backlog 2>/dev/null || echo 0)
+if (( NETDEV_BL <= 1000 )); then
+    err "net.core.netdev_max_backlog=$NETDEV_BL — kernel default, too small for a 25/100Gbps validator. Bump to 250000+"
+elif (( NETDEV_BL < 100000 )); then
+    warn "net.core.netdev_max_backlog=$NETDEV_BL — consider 250000+ for validators"
+fi
+
+NB=$(sysctl -n kernel.numa_balancing 2>/dev/null || echo '')
+if [[ "$NB" == "1" ]]; then
+    warn "kernel.numa_balancing=1 at runtime (cmdline numa_balancing=disable was overridden)"
+fi
 
 # ----- Validator process discovery -----
 VAL_PID=""; VAL_NAME=""
@@ -215,7 +253,6 @@ done
 # ----- Port range overlap with --dynamic-port-range -----
 LPR=$(sysctl -n net.ipv4.ip_local_port_range 2>/dev/null)
 LPR_LO=$(awk '{print $1}' <<<"$LPR"); LPR_HI=$(awk '{print $2}' <<<"$LPR")
-
 DYN_LO=8000; DYN_HI=10000; DYN_SRC="default"
 if [[ -n "$VAL_PID" && -r "/proc/$VAL_PID/cmdline" ]]; then
     VAL_CMDLINE=$(tr '\0' ' ' < "/proc/$VAL_PID/cmdline")
@@ -224,9 +261,44 @@ if [[ -n "$VAL_PID" && -r "/proc/$VAL_PID/cmdline" ]]; then
 fi
 kv "validator port range ($DYN_SRC)" "$DYN_LO-$DYN_HI"
 if (( LPR_LO <= DYN_HI && DYN_LO <= LPR_HI )); then
-    err "OVERLAP: ip_local_port_range ($LPR) overlaps validator port range ($DYN_LO-$DYN_HI). Same class of bug as val-55."
+    err "OVERLAP: ip_local_port_range ($LPR_LO-$LPR_HI) overlaps validator port range ($DYN_LO-$DYN_HI)"
 else
     ok "ip_local_port_range and validator port range do not overlap"
+fi
+
+# ============================================================================
+section "softnet_stat (per-CPU softirq processing)"
+# ============================================================================
+# Columns: processed dropped time_squeeze cpu_collision received_rps flow_limit_count softnet_backlog_len ...
+note "any 'dropped' is netdev_max_backlog overflow — direct cause of shred loss"
+if [[ -r /proc/net/softnet_stat ]]; then
+    cpu=0
+    any_drop=0
+    any_squeeze=0
+    iso_drop=0
+    while read -r line; do
+        set -- $line
+        proc=$((16#$1)); drop=$((16#$2)); sqz=$((16#$3))
+        if (( drop > 0 || sqz > 1000 )); then
+            isolated_marker=""
+            if in_set "$cpu" "$ISO_CPUS"; then
+                isolated_marker=" ${RED}[ISOLATED]${RST}"
+                iso_drop=$((iso_drop + drop))
+            fi
+            printf "    cpu%-3d  processed=%-12d  dropped=%-8d  time_squeeze=%-8d%s\n" \
+                "$cpu" "$proc" "$drop" "$sqz" "$isolated_marker"
+        fi
+        (( drop > 0 )) && any_drop=1
+        (( sqz > 1000 )) && any_squeeze=1
+        cpu=$((cpu+1))
+    done < /proc/net/softnet_stat
+
+    if (( any_drop == 0 && any_squeeze == 0 )); then
+        ok "no per-CPU softirq drops or significant time_squeeze"
+    fi
+    (( any_drop > 0 ))    && err "non-zero softnet drops detected — netdev_max_backlog ($NETDEV_BL) is overflowing"
+    (( iso_drop > 0 ))    && err "$iso_drop drops on ISOLATED CPUs — validator hot path is losing packets"
+    (( any_squeeze > 0 )) && warn "non-zero time_squeeze — NAPI hitting budget; consider increasing netdev_budget"
 fi
 
 # ============================================================================
@@ -238,7 +310,6 @@ if have netstat; then
         section ~ /Udp/ && /(errors|dropped|RcvbufErrors|SndbufErrors|InCsumErrors|InErrors)/ {print "    "$0}
         section ~ /IpExt/ && /Octets/ {print "    "$0}'
 fi
-
 if have ss; then
     note "UDP sockets with non-empty Recv-Q (top 10):"
     ss -Hunmp 2>/dev/null | awk 'NF>=4 && $2+0 > 0' | sort -k2 -n -r | head -n 10 \
@@ -246,36 +317,69 @@ if have ss; then
 fi
 
 # ============================================================================
-section "NIC stats (per physical interface)"
+section "NIC stats (per interface, including bond slaves)"
 # ============================================================================
-NIC_LIST=()
+ALL_IFACES=()
+SLAVE_IFACES=()
 for iface in $(ls /sys/class/net 2>/dev/null); do
     [[ "$iface" == "lo" ]] && continue
-    [[ -e "/sys/class/net/$iface/device" ]] || continue
-    NIC_LIST+=("$iface")
+    [[ -e "/sys/class/net/$iface/device" || -d "/sys/class/net/$iface/bonding" ]] || continue
+    ALL_IFACES+=("$iface")
+    [[ -L "/sys/class/net/$iface/master" ]] && SLAVE_IFACES+=("$iface")
 done
 
-for iface in "${NIC_LIST[@]}"; do
+for iface in "${ALL_IFACES[@]}"; do
     note "interface: $iface"
+
+    # Bond detection
+    if [[ -d "/sys/class/net/$iface/bonding" ]]; then
+        mode=$(cat "/sys/class/net/$iface/bonding/mode" 2>/dev/null)
+        slaves=$(cat "/sys/class/net/$iface/bonding/slaves" 2>/dev/null)
+        primary=$(cat "/sys/class/net/$iface/bonding/primary" 2>/dev/null)
+        active=$(cat "/sys/class/net/$iface/bonding/active_slave" 2>/dev/null)
+        kv "  type" "BOND  mode=$mode  slaves=[$slaves]  primary=${primary:-none}  active=${active:-none}"
+        xmit=$(cat "/sys/class/net/$iface/bonding/xmit_hash_policy" 2>/dev/null)
+        [[ -n "$xmit" ]] && kv "  xmit_hash_policy" "$xmit"
+    elif [[ -L "/sys/class/net/$iface/master" ]]; then
+        master=$(basename "$(readlink "/sys/class/net/$iface/master")")
+        kv "  type" "slave of bond $master"
+    fi
+
     if have ethtool; then
         speed=$(ethtool "$iface" 2>/dev/null | awk -F: '/Speed:/{gsub(/^ +/,"",$2); print $2}')
         link=$(ethtool "$iface"  2>/dev/null | awk -F: '/Link detected:/{gsub(/^ +/,"",$2); print $2}')
-        kv "  speed/link" "${speed:-?} / link=${link:-?}"
+        [[ -n "$speed$link" ]] && kv "  speed/link" "${speed:-?} / link=${link:-?}"
 
         rg=$(ethtool -g "$iface" 2>/dev/null | awk '
             /Current hardware settings/{cur=1; next}
             cur && /^(RX|TX):/ {gsub(/:/,"",$1); printf "%s=%s ",$1,$2}')
         [[ -n "$rg" ]] && kv "  ring (current)" "$rg"
 
-        echo "    error/drop counters (non-zero only):"
-        any=0
-        while IFS= read -r line; do
-            n=$(awk '{print $NF+0}' <<<"$line")
-            if (( n > 0 )); then printf "      %s\n" "$line"; any=1; fi
-        done < <(ethtool -S "$iface" 2>/dev/null | grep -iE 'drop|discard|miss|error|fifo|overrun|crc|no_buff|alloc_fail')
-        (( any == 0 )) && printf "      (none)\n"
-    else
-        note "(ethtool not installed)"
+        # MTU
+        mtu=$(<"/sys/class/net/$iface/mtu" 2>/dev/null)
+        [[ -n "$mtu" ]] && kv "  mtu" "$mtu"
+
+        # Errors (only if iface has hardware queues)
+        if [[ -e "/sys/class/net/$iface/device" ]]; then
+            echo "    error/drop counters (non-zero only):"
+            any=0
+            while IFS= read -r line; do
+                n=$(awk '{print $NF+0}' <<<"$line")
+                if (( n > 0 )); then printf "      %s\n" "$line"; any=1; fi
+            done < <(ethtool -S "$iface" 2>/dev/null | grep -iE 'drop|discard|miss|error|fifo|overrun|crc|no_buff|alloc_fail|out_of_buffer')
+            (( any == 0 )) && printf "      (none)\n"
+        fi
+
+        # RPS check (compact summary)
+        if compgen -G "/sys/class/net/$iface/queues/rx-*/rps_cpus" > /dev/null; then
+            rps_set=0
+            for q in /sys/class/net/$iface/queues/rx-*/rps_cpus; do
+                v=$(<"$q")
+                [[ "$v" =~ ^0+$ ]] || rps_set=1
+            done
+            (( rps_set == 1 )) && kv "  RPS" "configured (some rx queues have non-zero rps_cpus)" \
+                              || kv "  RPS" "off (all rx queues rps_cpus=0)"
+        fi
     fi
 done
 
@@ -300,7 +404,8 @@ if [[ -r /proc/interrupts && -n "$ISO_LIST" ]]; then
         /^[[:space:]]*[0-9]+:/ {
             irq=$1; desc=""
             for (j=ncpu+2; j<=NF; j++) desc = desc " " $j
-            if (desc !~ /(eth|ens|enp|eno|mlx|i40e|ice|bnxt|virtio_net|igb|ixgbe)/) next
+            # Match common NIC drivers (mlx5/Mellanox, i40e/X710, ice/E810, igc, igb, ixgbe, bnxt, mlx4, virtio_net)
+            if (desc !~ /(eth|ens|enp|eno|mlx|i40e|ice|bnxt|virtio_net|igb|ixgbe|igc)/) next
             total_iso=0; cpus_hit=""
             for (i=1; i<=ncpu; i++) {
                 cpu=hdr[i]
@@ -312,9 +417,8 @@ if [[ -r /proc/interrupts && -n "$ISO_LIST" ]]; then
             if (total_iso > 0) printf "  [WARN] IRQ %s%s: %d hits on isolated CPUs in 2s ->%s\n", irq, desc, total_iso, cpus_hit
         }
     ' "$snap1" "$snap2"
-
     rm -f "$snap1" "$snap2"
-    note "(no [WARN] lines above means no NIC IRQs fired on isolated cores during the 2s window)"
+    note "(no [WARN] lines = no NIC IRQs fired on isolated cores during the 2s window)"
 else
     note "skipped (no isolated CPUs detected, or /proc/interrupts unreadable)"
 fi
@@ -323,15 +427,12 @@ fi
 section "Time sync"
 # ============================================================================
 if have chronyc; then
-    note "chronyc tracking:"
-    chronyc tracking 2>/dev/null | sed 's/^/    /'
-    note "chronyc sources (-n):"
-    chronyc -n sources 2>/dev/null | sed 's/^/    /'
+    note "chronyc tracking:"; chronyc tracking 2>/dev/null | sed 's/^/    /'
+    note "chronyc sources (-n):"; chronyc -n sources 2>/dev/null | sed 's/^/    /'
 elif have timedatectl; then
     timedatectl status 2>/dev/null | sed 's/^/    /'
 fi
 kv "clocksource" "$(cat /sys/devices/system/clocksource/clocksource0/current_clocksource 2>/dev/null || echo '?')"
-kv "available"   "$(cat /sys/devices/system/clocksource/clocksource0/available_clocksource 2>/dev/null || echo '?')"
 
 # ============================================================================
 section "Validator process"
@@ -339,21 +440,37 @@ section "Validator process"
 if [[ -n "$VAL_PID" ]]; then
     kv "binary" "$VAL_NAME"
     kv "pid"    "$VAL_PID"
+
     if [[ -r "/proc/$VAL_PID/status" ]]; then
         cpus_allowed=$(awk '/^Cpus_allowed_list:/{print $2}' "/proc/$VAL_PID/status")
         kv "Cpus_allowed_list" "$cpus_allowed"
         kv "voluntary_ctxt"    "$(awk '/^voluntary_ctxt_switches:/{print $2}'    "/proc/$VAL_PID/status")"
         kv "nonvoluntary_ctxt" "$(awk '/^nonvoluntary_ctxt_switches:/{print $2}' "/proc/$VAL_PID/status")"
-        if [[ -n "$ISO_LIST" ]]; then
-            for c in $ISO_CPUS; do
-                if ! grep -qwE "(^|[,-])$c([,-]|$)" <<<"$cpus_allowed"; then
-                    warn "isolated cpu${c} not in validator's Cpus_allowed_list ($cpus_allowed)"
-                fi
-            done
-        fi
+
+        # Range-aware membership check
+        allowed_expanded=$(expand_cpus "$cpus_allowed")
+        for c in $ISO_CPUS; do
+            if ! in_set "$c" "$allowed_expanded"; then
+                warn "isolated cpu${c} not in validator's Cpus_allowed_list ($cpus_allowed)"
+            fi
+        done
     fi
 
-    note "top threads by CPU (one snapshot, may not catch hot tiles):"
+    # Key validator flags (filter to tuning-relevant ones)
+    if [[ -r "/proc/$VAL_PID/cmdline" ]]; then
+        VAL_CMDLINE=$(tr '\0' ' ' < "/proc/$VAL_PID/cmdline")
+        note "selected validator flags:"
+        for flag in --identity --vote-account --dynamic-port-range --rpc-port \
+                    --limit-ledger-size --accounts --ledger --snapshots \
+                    --tpu-coalesce-ms --tpu-enable-udp --no-port-check \
+                    --rocksdb-compression --use-snapshot-archives-at-startup \
+                    --tip-payment-program-pubkey --merkle-root-upload-authority; do
+            v=$(grep -oE -- "${flag}[= ][^ ]+" <<<"$VAL_CMDLINE" | head -n1 || true)
+            [[ -n "$v" ]] && printf "      %s\n" "$v"
+        done
+    fi
+
+    note "top threads by CPU (one snapshot):"
     ps -L -o pid,tid,psr,pcpu,comm -p "$VAL_PID" 2>/dev/null | sort -k4 -n -r | head -n 12 | sed 's/^/    /'
 
     if have systemctl; then
@@ -376,14 +493,14 @@ section "Memory / THP / NUMA"
 kv "vm.swappiness"    "$(sysctl -n vm.swappiness)"
 kv "vm.max_map_count" "$(sysctl -n vm.max_map_count)"
 kv "fs.nr_open"       "$(sysctl -n fs.nr_open 2>/dev/null || echo '?')"
+[[ -r /proc/meminfo ]] && grep -E '^(MemTotal|MemAvailable|HugePages_|Hugepagesize)' /proc/meminfo | sed 's/^/    /'
 
 if have numactl; then
-    note "numactl --hardware:"
-    numactl --hardware 2>/dev/null | sed 's/^/    /'
+    note "numactl --hardware:"; numactl --hardware 2>/dev/null | sed 's/^/    /'
 fi
 
 # ============================================================================
 section "Done"
 # ============================================================================
 note "Read-only report complete."
-is_root || note "Re-run with sudo for audit subsystem state and full /proc coverage."
+is_root || note "Re-run with sudo for full coverage."
