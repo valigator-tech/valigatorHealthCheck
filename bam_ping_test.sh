@@ -11,6 +11,7 @@ HOSTS=(
     "ny.mainnet.bam.jito.wtf"
     "pittsburgh.mainnet.bam.jito.wtf"
     "slc.mainnet.bam.jito.wtf"
+    "siauliai.mainnet.bam.jito.wtf"
     "singapore.mainnet.bam.jito.wtf"
     "tokyo.mainnet.bam.jito.wtf"
 )
