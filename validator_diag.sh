@@ -321,12 +321,16 @@ section "NIC stats (per interface, including bond slaves)"
 # ============================================================================
 ALL_IFACES=()
 SLAVE_IFACES=()
-for iface in $(ls /sys/class/net 2>/dev/null); do
+# shellcheck disable=SC2045
+shopt -s nullglob
+for iface_path in /sys/class/net/*; do
+    iface=$(basename "$iface_path")
     [[ "$iface" == "lo" ]] && continue
     [[ -e "/sys/class/net/$iface/device" || -d "/sys/class/net/$iface/bonding" ]] || continue
     ALL_IFACES+=("$iface")
     [[ -L "/sys/class/net/$iface/master" ]] && SLAVE_IFACES+=("$iface")
 done
+shopt -u nullglob
 
 for iface in "${ALL_IFACES[@]}"; do
     note "interface: $iface"
