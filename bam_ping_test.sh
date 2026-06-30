@@ -2,19 +2,22 @@
 
 # Define hosts to ping
 HOSTS=(
-    "amsterdam.mainnet.bam.jito.wtf"
-    "dublin.mainnet.bam.jito.wtf"
-    "dallas.mainnet.bam.jito.wtf"
-    "frankfurt.mainnet.bam.jito.wtf"
-    "london.mainnet.bam.jito.wtf"
+    "mainnet.bam.jito.wtf"
+    "ams.mainnet.bam.jito.wtf"
+    "iad.mainnet.bam.jito.wtf"
+    "dfw.mainnet.bam.jito.wtf"
+    "dub.mainnet.bam.jito.wtf"
+    "fra.mainnet.bam.jito.wtf"
+    "lon.mainnet.bam.jito.wtf"
     "lax.mainnet.bam.jito.wtf"
-    "ny.mainnet.bam.jito.wtf"
-    "pittsburgh.mainnet.bam.jito.wtf"
+    "ewr.mainnet.bam.jito.wtf"
+    "pit.mainnet.bam.jito.wtf"
     "slc.mainnet.bam.jito.wtf"
-    "siauliai.mainnet.bam.jito.wtf"
-    "singapore.mainnet.bam.jito.wtf"
-    "tokyo.mainnet.bam.jito.wtf"
+    "sqq.mainnet.bam.jito.wtf"
+    "sin.mainnet.bam.jito.wtf"
+    "tyo.mainnet.bam.jito.wtf"
 )
+
 
 # Number of pings to send
 COUNT=5
