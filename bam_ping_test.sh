@@ -8,6 +8,7 @@ HOSTS=(
     "dfw.mainnet.bam.jito.wtf"
     "dub.mainnet.bam.jito.wtf"
     "fra.mainnet.bam.jito.wtf"
+    "hkg.mainnet.bam.jito.wtf"
     "lon.mainnet.bam.jito.wtf"
     "lax.mainnet.bam.jito.wtf"
     "ewr.mainnet.bam.jito.wtf"
