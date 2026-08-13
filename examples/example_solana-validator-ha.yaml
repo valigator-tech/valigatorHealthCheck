@@ -1,0 +1,104 @@
+log:
+  level: info
+  format: text
+
+validator:
+  name: "validator unique name here"
+  rpc_url: "http://localhost:8899"
+  public_ip_service_urls: ["https://ipv4.icanhazip.com", "https://api.ipify.org"]
+  identities:
+    active: "/path/to/active_validator-keypair.json"
+    passive: "/path/to/validator-keypair.json"
+
+cluster:
+  name: "mainnet-beta"  # mainnet-beta, devnet, or testnet
+  rpc_urls: [ "https://api.mainnet-beta.solana.com", 
+              "redundant_rpc_address_here"
+            ]
+
+failover:
+  dry_run: false
+  poll_interval_duration: 5s
+  leaderless_samples_threshold: 3
+  leaderless_confirmation_poll_duration: 1s 
+  delinquency_bypass: true 
+  delinquent_slot_distance_override:
+    enabled: false
+    value: 75
+  self_healthy:
+    minimum_duration: 30s
+    poll_interval_duration: 2s
+    unhealthy_grace_count: 1
+  recording:
+    enabled: true
+
+  peers:
+    other_validator_peer_hostname_here:
+      ip: ther_validator_peer_ip_here
+
+  active:
+   command: /path/to/bin/ha-set-role_v3.sh
+   
+   args: [
+     "--role", "active",
+     "--client", "agave",
+     "--rpc-url", "http://127.0.0.1:8899",
+     "--identity-keyfile", "{{ .ActiveIdentityKeypairFile }}",
+     "--tower-file", "/mnt/ledger/tower-1_9-{{ .ActiveIdentityPubkey }}.bin",
+   ]
+
+   hooks:
+
+    pre:
+      - name: notify-slack-promoting
+        command: /path/to/bin/send_slack_message_params.sh
+        must_succeed: false # optional, defaults to false
+        env: {}
+        args: [
+          "--title", "☑️ Validator Promotion PENDING ",
+          "--message", "*Host:* `{{ .SelfName }}`\n*Action:* Promoting to active\n*Identity Change:*\n`{{ slice .PassiveIdentityPubkey 0 5 }}` → `{{ slice .ActiveIdentityPubkey 0 5 }}`"
+        ]
+
+    post:
+      - name: notify-slack-promoted
+        command: /path/to/bin/send_slack_message_params.sh
+        env: {}
+        args: [
+          "--title", "✅ Validator Promotion DONE ",
+          "--message", "*Host:* `{{ .SelfName }}`\n*Action:* Promoting to active\n*Identity Change:*\n`{{ slice .PassiveIdentityPubkey 0 5 }}` → `{{ slice .ActiveIdentityPubkey 0 5 }}`"
+        ]
+      - name: example_do_something_else_pre
+        command: /path/to/bin/example.sh
+
+  passive:
+
+   command: /path/to/bin/ha-set-role_v3.sh
+   args: [
+     "--role", "passive",
+     "--client", "agave",
+     "--rpc-url", "http://127.0.0.1:8899",
+     "--identity-keyfile", "{{ .PassiveIdentityKeypairFile }}",
+     "--tower-file", "/mnt/ledger/tower-1_9-{{ .ActiveIdentityPubkey }}.bin",
+   ]
+
+   hooks:
+
+    pre:
+      - name: notify-slack-demoting
+        command: /path/to/bin/send_slack_message_params.sh
+        must_succeed: false # optional, defaults to false
+        args: [
+          "--title", "☑️ Validator Demotion PENDING ",
+          "--message", "*Host:* `{{ .SelfName }}`\n*Action:* Demoting to standby\n*Identity Change:*\n`{{ slice .ActiveIdentityPubkey 0 5 }}` → `{{ slice .PassiveIdentityPubkey 0 5 }}`"
+        ]
+
+    post:
+      - name: notify-slack-demoted
+        command: /path/to/bin/send_slack_message_params.sh
+        args: [
+          "--title", "✅ Validator Demotion DONE ",
+          "--message", "*Host:* `{{ .SelfName }}`\n*Action:* Demoting to standby\n*Identity Change:*\n`{{ slice .ActiveIdentityPubkey 0 5 }}` → `{{ slice .PassiveIdentityPubkey 0 5 }}`"
+        ]
+      - name: example_do_something_else_post
+        command: /path/to/bin/example.sh
+
