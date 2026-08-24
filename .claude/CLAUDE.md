@@ -77,21 +77,20 @@ sudo ./health_check.sh -h                 # Help
 
 ---
 
-### jito_ping_test.sh
+### jito_block_engine_ping_test.sh
 
 **Purpose**: Latency benchmarking tool for Jito block engine endpoints. Used to determine optimal datacenter/region placement for Solana validators based on network latency to Jito MEV infrastructure.
 
-**Location**: `/jito_ping_test.sh`
+**Location**: `/jito_block_engine_ping_test.sh`
 
 **Usage**:
 ```bash
-./jito_ping_test.sh
+./jito_block_engine_ping_test.sh
 ```
 
 **Hosts Tested**:
 - mainnet.block-engine.jito.wtf (global)
 - amsterdam.mainnet.block-engine.jito.wtf
-- dublin.mainnet.block-engine.jito.wtf
 - frankfurt.mainnet.block-engine.jito.wtf
 - london.mainnet.block-engine.jito.wtf
 - ny.mainnet.block-engine.jito.wtf
@@ -105,25 +104,33 @@ sudo ./health_check.sh -h                 # Help
 
 ---
 
-### bam_ping_test.sh
+### jito_bam_node_ping_test.sh
 
-**Purpose**: Latency benchmarking tool for Jito BAM (Block Auction Marketplace) endpoints. Used alongside jito_ping_test.sh to evaluate full Jito infrastructure connectivity.
+**Purpose**: Latency benchmarking tool for Jito BAM (Block Auction Marketplace) node endpoints. Used alongside jito_block_engine_ping_test.sh to evaluate full Jito infrastructure connectivity.
 
-**Location**: `/bam_ping_test.sh`
+**Location**: `/jito_bam_node_ping_test.sh`
 
 **Usage**:
 ```bash
-./bam_ping_test.sh
+./jito_bam_node_ping_test.sh
 ```
 
 **Hosts Tested**:
-- amsterdam.mainnet.bam.jito.wtf
-- frankfurt.mainnet.bam.jito.wtf
-- london.mainnet.bam.jito.wtf
-- ny.mainnet.bam.jito.wtf
-- slc.mainnet.bam.jito.wtf
-- tokyo.mainnet.bam.jito.wtf
-- singapore.mainnet.bam.jito.wtf
+- mainnet.bam.jito.wtf
+- ams.mainnet.bam.jito.wtf (Amsterdam)
+- iad.mainnet.bam.jito.wtf (Washington DC)
+- dfw.mainnet.bam.jito.wtf (Dallas)
+- dub.mainnet.bam.jito.wtf (Dublin)
+- fra.mainnet.bam.jito.wtf (Frankfurt)
+- hkg.mainnet.bam.jito.wtf (Hong Kong)
+- lon.mainnet.bam.jito.wtf (London)
+- lax.mainnet.bam.jito.wtf (Los Angeles)
+- ewr.mainnet.bam.jito.wtf (Newark)
+- pit.mainnet.bam.jito.wtf (Pittsburgh)
+- slc.mainnet.bam.jito.wtf (Salt Lake City)
+- sqq.mainnet.bam.jito.wtf (Singapore)
+- sin.mainnet.bam.jito.wtf (Singapore)
+- tyo.mainnet.bam.jito.wtf (Tokyo)
 
 **Output**: Tabular format showing Min/Avg/Max latency and packet loss percentage for each endpoint.
 
@@ -207,8 +214,8 @@ valigatorHealthCheck/
 │   └── settings.local.json # Local Claude Code settings
 ├── backups/               # Backup copies of scripts and configs
 ├── health_check.sh        # Main health check script
-├── jito_ping_test.sh      # Jito block engine latency test
-├── bam_ping_test.sh       # Jito BAM latency test
+├── jito_block_engine_ping_test.sh  # Jito block engine latency test
+├── jito_bam_node_ping_test.sh      # Jito BAM node latency test
 ├── harmonic_ping_test.sh  # Harmonic auction latency test
 ├── compare_packages.sh    # Package comparison utility
 ├── config.json            # Default configuration
