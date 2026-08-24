@@ -11,8 +11,8 @@ HOSTS=(
     "slc.mainnet.block-engine.jito.wtf"
     "singapore.mainnet.block-engine.jito.wtf"
     "tokyo.mainnet.block-engine.jito.wtf"
-    "dublin.mainnet.block-engine.jito.wtf"
 )
+
 
 # Number of pings to send
 COUNT=5
