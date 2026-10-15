@@ -47,6 +47,7 @@ sudo ./health_check.sh -h                 # Help
 | CPU Driver | `cpuDriver` | Checks for p-state driver (Intel or AMD) |
 | C-States | `cstatesDisabled` | Verifies CPU C-states are disabled for low latency |
 | AMD P-State EPP | `amdPstateEpp` | Checks AMD energy performance preference is set to "performance" |
+| SMT Status | `smtStatus` | Verifies SMT/hyperthreading matches `systemChecks.cpu.smt` (`disabled` default, `enabled`, or `any`); missing key enforces `disabled` |
 | Isolated CPUs | `isolatedCpus` | Reports on CPU core isolation (informational) |
 | CPU Power Limits | `cpuPowerLimits` | Checks Intel RAPL power limits |
 | Fail2ban | `fail2ban` | Verifies fail2ban is installed, enabled, and running |

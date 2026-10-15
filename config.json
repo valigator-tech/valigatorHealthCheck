@@ -6,6 +6,7 @@
     "cpuDriver": true,
     "cstatesDisabled": true,
     "amdPstateEpp": true,
+    "smtStatus": true,
     "isolatedCpus": true,
     "cpuPowerLimits": true,
     "fail2ban": true,
@@ -26,7 +27,8 @@
     "cpu": {
       "governor": "performance",
       "boost": "enabled",
-      "driver": "amd-pstate-epp"
+      "driver": "amd-pstate-epp",
+      "smt": "disabled"
     },
     "memory": {
       "swapEnabled": false

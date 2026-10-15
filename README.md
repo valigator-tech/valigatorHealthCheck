@@ -16,6 +16,7 @@ The script verifies the following aspects of your system:
 - **CPU Governor Settings**: Ensures CPU cores are set to performance governor mode
 - **CPU Performance**: Verifies that CPU boost/turbo is enabled
 - **CPU Driver**: Ensures that the p-state CPU scaling driver is being used
+- **SMT (Hyperthreading)**: Verifies SMT matches the configured state (default: disabled)
 - **Memory Management**: Confirms swap is disabled
 - **Security Services**: Checks that fail2ban is installed, enabled, and running
 - **System Updates**: Validates that there are no more than 5 package updates pending
@@ -63,6 +64,7 @@ The configuration file is structured as follows:
     "cpuGovernor": true,
     "cpuBoost": true,
     "cpuDriver": true, 
+    "smtStatus": true,
     "swapStatus": true,
     "packageUpdates": true,
     "ntpSync": true,
@@ -81,7 +83,8 @@ The configuration file is structured as follows:
     "cpu": {
       "governor": "performance",
       "boost": "enabled",
-      "driver": "pstate"
+      "driver": "pstate",
+      "smt": "disabled"
     },
     "security": {
       "fail2ban": {
@@ -163,5 +166,6 @@ The script provides color-coded output for easy interpretation:
 - For kernel.pid_max, the script checks if the value is equal to or greater than the expected value
 - For vm.swappiness, the script accepts any value of 30 or lower
 - CPU boost check handles both Intel and AMD-specific boost mechanisms
+- SMT check reads `/sys/devices/system/cpu/smt/active`; `systemChecks.cpu.smt` accepts `disabled` (default), `enabled`, or `any` (report only). If the key is missing from the config, the check still runs and expects `disabled`
 - NTP check supports multiple time synchronization methods (systemd-timesyncd, chronyd, ntpd, OpenNTPD)
 - Package update checker automatically detects apt, dnf, yum, pacman, or zypper package managers

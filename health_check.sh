@@ -1743,6 +1743,81 @@ check_amd_pstate_epp() {
   fi
 }
 
+# Function to check SMT (hyperthreading) state
+check_smt_status() {
+  echo -e "\n${YELLOW}=== SMT (Hyperthreading) Configuration ===${NC}"
+  echo -e "${BLUE}Checking SMT status...${NC}"
+
+  # Expected state: disabled (default), enabled, or any (report only)
+  local expected
+  expected=$(get_config ".systemChecks.cpu.smt" "disabled")
+  expected=$(echo "$expected" | tr '[:upper:]' '[:lower:]')
+
+  case "$expected" in
+    disabled|enabled|any) ;;
+    *)
+      echo -e "  ${RED}FAIL: Invalid systemChecks.cpu.smt value in config: '$expected'${NC}"
+      echo -e "  ${YELLOW}Valid values: disabled, enabled, any${NC}"
+      return 1
+      ;;
+  esac
+
+  local actual=""
+  local control=""
+  local control_file="/sys/devices/system/cpu/smt/control"
+  local active_file="/sys/devices/system/cpu/smt/active"
+
+  if [ -f "$control_file" ]; then
+    control=$(cat "$control_file")
+  fi
+
+  if [ -f "$active_file" ]; then
+    if [ "$(cat "$active_file")" = "1" ]; then
+      actual="enabled"
+    else
+      actual="disabled"
+    fi
+  else
+    # Older kernels without the smt sysfs interface: inspect cpu0's thread siblings
+    local siblings_file="/sys/devices/system/cpu/cpu0/topology/thread_siblings_list"
+    if [ -f "$siblings_file" ]; then
+      if grep -q '[,-]' "$siblings_file"; then
+        actual="enabled"
+      else
+        actual="disabled"
+      fi
+    fi
+  fi
+
+  if [ -z "$actual" ]; then
+    echo -e "  ${RED}FAIL: Unable to determine SMT state (no smt or topology info in sysfs)${NC}"
+    return 1
+  fi
+
+  local detail="active: $actual"
+  [ -n "$control" ] && detail="$detail, control: $control"
+
+  if [ "$expected" = "any" ]; then
+    echo -e "  ${GREEN}PASS: SMT is $actual ($detail) - not enforced by config${NC}"
+    return 0
+  fi
+
+  if [ "$actual" = "$expected" ]; then
+    echo -e "  ${GREEN}PASS: SMT is $actual ($detail)${NC}"
+    return 0
+  fi
+
+  echo -e "  ${RED}FAIL: SMT is $actual ($detail)${NC}"
+  echo -e "  Expected: ${GREEN}$expected${NC}"
+  if [ "$expected" = "disabled" ]; then
+    echo -e "  ${YELLOW}To disable: Add 'nosmt' to GRUB_CMDLINE_LINUX_DEFAULT or disable SMT in BIOS${NC}"
+    echo -e "  ${YELLOW}Runtime only (not persistent): echo off > $control_file${NC}"
+  else
+    echo -e "  ${YELLOW}To enable: Remove 'nosmt' from kernel parameters and enable SMT in BIOS${NC}"
+  fi
+  return 1
+}
+
 # Function to check isolated CPUs
 check_isolated_cpus() {
   echo -e "\n${YELLOW}=== CPU Isolation ===${NC}"
@@ -1910,6 +1985,17 @@ if should_run_check "amdPstateEpp"; then
 else
   echo -e "\n${YELLOW}=== AMD P-State EPP Configuration ===${NC}"
   echo -e "${BLUE}Checking energy performance preference... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Check SMT (hyperthreading) if enabled in config
+if should_run_check "smtStatus"; then
+  if ! check_smt_status; then
+    ((failures++))
+    failed_checks+=("CPU Configuration: SMT (Hyperthreading)")
+  fi
+else
+  echo -e "\n${YELLOW}=== SMT (Hyperthreading) Configuration ===${NC}"
+  echo -e "${BLUE}Checking SMT status... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Check isolated CPUs if enabled in config
