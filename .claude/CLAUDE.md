@@ -63,7 +63,7 @@ sudo ./health_check.sh -h                 # Help
 | NIC Ring Buffers | `nicRingBuffers` | Verifies network interface ring buffers are at maximum |
 | Ethtool Service | `ethtoolService` | Checks ethtool-ring-buffers.service is active |
 | NVMe Wear | `nvmeWear` | Monitors NVMe drive wear levels against threshold |
-| GRUB Cmdline | `grubCmdline` | Verifies required parameters exist in GRUB_CMDLINE_LINUX_DEFAULT |
+| GRUB Cmdline | `grubCmdline` | Verifies required parameters (`audit=1`, `audit_backlog_limit=8192`, `transparent_hugepage=never`) exist in GRUB_CMDLINE_LINUX_DEFAULT |
 | Huge Pages | `hugepages` | Verifies `hugepagesz=`/`hugepages=` in GRUB match `systemChecks.memory.hugepageSize` (default `2M`) and `hugepageCount` (minimum, default `256`), and that the running kernel has allocated them; reports pages in use (and agave-validator's share) and warns if the pool is exhausted |
 
 **NIC Exclusion**: Network interfaces can be excluded from ring buffer checks via config:

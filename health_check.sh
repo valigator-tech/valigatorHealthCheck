@@ -2059,6 +2059,7 @@ check_grub_cmdline() {
   local required_params=(
     "audit=1"
     "audit_backlog_limit=8192"
+    "transparent_hugepage=never"
   )
 
   # Check each required parameter
