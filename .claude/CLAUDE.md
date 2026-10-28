@@ -64,6 +64,7 @@ sudo ./health_check.sh -h                 # Help
 | Ethtool Service | `ethtoolService` | Checks ethtool-ring-buffers.service is active |
 | NVMe Wear | `nvmeWear` | Monitors NVMe drive wear levels against threshold |
 | GRUB Cmdline | `grubCmdline` | Verifies required parameters exist in GRUB_CMDLINE_LINUX_DEFAULT |
+| Huge Pages | `hugepages` | Verifies `hugepagesz=`/`hugepages=` in GRUB match `systemChecks.memory.hugepageSize` (default `2M`) and `hugepageCount` (minimum, default `256`), and that the running kernel has allocated them |
 
 **NIC Exclusion**: Network interfaces can be excluded from ring buffer checks via config:
 ```json

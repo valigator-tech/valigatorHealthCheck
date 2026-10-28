@@ -128,7 +128,8 @@ get_config() {
   if [[ "$key" == .checksToRun.* ]]; then
     # Extract the last part of the key (after the last dot)
     local key_name=${key##*.}
-    jq_result=$(grep -A20 '"checksToRun":' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*\([^",}]*\).*/\1/')
+    # Scan from "checksToRun" to its closing brace so the block can grow without truncation
+    jq_result=$(sed -n '/"checksToRun":/,/}/p' "$CONFIG_FILE" | grep "\"$key_name\":" | head -1 | sed 's/.*:[ ]*\([^",}]*\).*/\1/')
   elif [[ "$key" == .systemChecks.* ]]; then
     # Extract the last part of the key (after the last dot)
     local key_name=${key##*.}
@@ -2090,6 +2091,109 @@ if should_run_check "grubCmdline"; then
 else
   echo -e "\n${YELLOW}=== GRUB Configuration ===${NC}"
   echo -e "${BLUE}Checking GRUB command line parameters... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Function to check huge pages are configured in GRUB and allocated by the running kernel
+check_hugepages() {
+  echo -e "\n${YELLOW}=== Huge Pages ===${NC}"
+  echo -e "${BLUE}Checking huge page configuration...${NC}"
+
+  local expected_size expected_count
+  expected_size=$(get_config '.systemChecks.memory.hugepageSize' "2M")
+  expected_count=$(get_config '.systemChecks.memory.hugepageCount' "256")
+
+  # Convert the size (e.g. 2M, 1G) to kB for the sysfs path
+  local size_kb
+  case "$expected_size" in
+    *[Kk]) size_kb=${expected_size%[Kk]} ;;
+    *[Mm]) size_kb=$(( ${expected_size%[Mm]} * 1024 )) ;;
+    *[Gg]) size_kb=$(( ${expected_size%[Gg]} * 1024 * 1024 )) ;;
+    *)
+      echo -e "  ${RED}FAIL: Invalid systemChecks.memory.hugepageSize value in config: '$expected_size'${NC}"
+      echo -e "  ${YELLOW}Use a size with a K, M or G suffix (e.g. 2M, 1G)${NC}"
+      return 1
+      ;;
+  esac
+
+  if ! [[ "$expected_count" =~ ^[0-9]+$ ]]; then
+    echo -e "  ${RED}FAIL: Invalid systemChecks.memory.hugepageCount value in config: '$expected_count'${NC}"
+    return 1
+  fi
+
+  local issues=0
+
+  # Persistent config: GRUB_CMDLINE_LINUX_DEFAULT must contain hugepagesz=<size> and hugepages>=<count>
+  local grub_file="/etc/default/grub"
+  local cmdline_default=""
+  if [ -f "$grub_file" ]; then
+    cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'"'")
+  else
+    echo -e "  ${RED}FAIL: GRUB configuration file not found at $grub_file${NC}"
+    ((issues++))
+  fi
+
+  if [ -f "$grub_file" ]; then
+    # Match whole tokens so e.g. hugepages=2560 is not mistaken for hugepages=256
+    local grub_size="" grub_count="" token
+    for token in $cmdline_default; do
+      case "$token" in
+        hugepagesz=*) grub_size=${token#hugepagesz=} ;;
+        hugepages=*) grub_count=${token#hugepages=} ;;
+      esac
+    done
+
+    if [ "$(echo "$grub_size" | tr '[:lower:]' '[:upper:]')" = "$(echo "$expected_size" | tr '[:lower:]' '[:upper:]')" ]; then
+      echo -e "  ${GREEN}PASS: 'hugepagesz=$grub_size' found in GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+    else
+      echo -e "  ${RED}FAIL: 'hugepagesz=$expected_size' missing from GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+      [ -n "$grub_size" ] && echo -e "  Found: ${RED}hugepagesz=$grub_size${NC}"
+      ((issues++))
+    fi
+
+    if [[ "$grub_count" =~ ^[0-9]+$ ]] && [ "$grub_count" -ge "$expected_count" ]; then
+      echo -e "  ${GREEN}PASS: 'hugepages=$grub_count' found in GRUB_CMDLINE_LINUX_DEFAULT (minimum: $expected_count)${NC}"
+    else
+      echo -e "  ${RED}FAIL: 'hugepages=$expected_count' (or higher) missing from GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+      [ -n "$grub_count" ] && echo -e "  Found: ${RED}hugepages=$grub_count${NC}"
+      ((issues++))
+    fi
+  fi
+
+  # Runtime state: pages of this size actually allocated by the running kernel
+  local nr_file="/sys/kernel/mm/hugepages/hugepages-${size_kb}kB/nr_hugepages"
+  if [ -f "$nr_file" ]; then
+    local allocated
+    allocated=$(cat "$nr_file")
+    if [ "$allocated" -ge "$expected_count" ]; then
+      echo -e "  ${GREEN}PASS: $allocated huge pages of size $expected_size allocated (minimum: $expected_count)${NC}"
+    else
+      echo -e "  ${RED}FAIL: $allocated huge pages of size $expected_size allocated (minimum: $expected_count)${NC}"
+      echo -e "  ${YELLOW}If GRUB is already configured, run 'sudo update-grub' and reboot to apply${NC}"
+      ((issues++))
+    fi
+  else
+    echo -e "  ${RED}FAIL: Huge page size $expected_size not supported by the running kernel ($nr_file not found)${NC}"
+    ((issues++))
+  fi
+
+  if [ $issues -eq 0 ]; then
+    return 0
+  fi
+
+  echo -e "  ${YELLOW}Add 'hugepagesz=$expected_size hugepages=$expected_count' to GRUB_CMDLINE_LINUX_DEFAULT in $grub_file${NC}"
+  echo -e "  ${YELLOW}Then run: sudo update-grub && sudo reboot${NC}"
+  return 1
+}
+
+# Check huge pages if enabled in config
+if should_run_check "hugepages"; then
+  if ! check_hugepages; then
+    ((failures++))
+    failed_checks+=("Huge Pages: Configuration")
+  fi
+else
+  echo -e "\n${YELLOW}=== Huge Pages ===${NC}"
+  echo -e "${BLUE}Checking huge page configuration... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Summary - Always show this part even in quiet mode

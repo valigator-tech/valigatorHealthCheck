@@ -21,7 +21,8 @@
     "ethtoolService": true,
     "nvmeWear": true,
     "requiredPackages": true,
-    "grubCmdline": true
+    "grubCmdline": true,
+    "hugepages": true
   },
   "systemChecks": {
     "cpu": {
@@ -31,7 +32,9 @@
       "smt": "disabled"
     },
     "memory": {
-      "swapEnabled": false
+      "swapEnabled": false,
+      "hugepageSize": "2M",
+      "hugepageCount": 256
     },
     "security": {
       "fail2banEnabled": true,
