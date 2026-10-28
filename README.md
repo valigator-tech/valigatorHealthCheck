@@ -18,6 +18,7 @@ The script verifies the following aspects of your system:
 - **CPU Driver**: Ensures that the p-state CPU scaling driver is being used
 - **SMT (Hyperthreading)**: Verifies SMT matches the configured state (default: disabled)
 - **Memory Management**: Confirms swap is disabled
+- **Huge Pages**: Verifies `hugepagesz`/`hugepages` are set in GRUB and that the running kernel has allocated at least that many huge pages
 - **Security Services**: Checks that fail2ban is installed, enabled, and running
 - **System Updates**: Validates that there are no more than 5 package updates pending
 - **Automatic Updates**: Verifies that unattended upgrades and automatic updates are disabled
@@ -66,6 +67,7 @@ The configuration file is structured as follows:
     "cpuDriver": true, 
     "smtStatus": true,
     "swapStatus": true,
+    "hugepages": true,
     "packageUpdates": true,
     "ntpSync": true,
     "fail2ban": true,
@@ -101,7 +103,9 @@ The configuration file is structured as follows:
       "unattendedUpgrades": false
     },
     "memory": {
-      "swapEnabled": false
+      "swapEnabled": false,
+      "hugepageSize": "2M",
+      "hugepageCount": 256
     },
     "time": {
       "ntpEnabled": true
@@ -167,5 +171,6 @@ The script provides color-coded output for easy interpretation:
 - For vm.swappiness, the script accepts any value of 30 or lower
 - CPU boost check handles both Intel and AMD-specific boost mechanisms
 - SMT check reads `/sys/devices/system/cpu/smt/active`; `systemChecks.cpu.smt` accepts `disabled` (default), `enabled`, or `any` (report only). If the key is missing from the config, the check still runs and expects `disabled`
+- Huge pages check reads `hugepagesz=`/`hugepages=` from `GRUB_CMDLINE_LINUX_DEFAULT` and `/sys/kernel/mm/hugepages/hugepages-<size>kB/nr_hugepages`; `systemChecks.memory.hugepageSize` (default `2M`) must match exactly and `hugepageCount` (default `256`) is a minimum. Pages in use are reported for information only (a stopped validator uses none); a warning is shown if every page is in use
 - NTP check supports multiple time synchronization methods (systemd-timesyncd, chronyd, ntpd, OpenNTPD)
 - Package update checker automatically detects apt, dnf, yum, pacman, or zypper package managers
