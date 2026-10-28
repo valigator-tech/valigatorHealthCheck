@@ -29,7 +29,6 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 0
-          persist-credentials: false
 
       - name: Pre-fetch base and head refs
         env:
