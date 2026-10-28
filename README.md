@@ -171,6 +171,6 @@ The script provides color-coded output for easy interpretation:
 - For vm.swappiness, the script accepts any value of 30 or lower
 - CPU boost check handles both Intel and AMD-specific boost mechanisms
 - SMT check reads `/sys/devices/system/cpu/smt/active`; `systemChecks.cpu.smt` accepts `disabled` (default), `enabled`, or `any` (report only). If the key is missing from the config, the check still runs and expects `disabled`
-- Huge pages check reads `hugepagesz=`/`hugepages=` from `GRUB_CMDLINE_LINUX_DEFAULT` and `/sys/kernel/mm/hugepages/hugepages-<size>kB/nr_hugepages`; `systemChecks.memory.hugepageSize` (default `2M`) must match exactly and `hugepageCount` (default `256`) is a minimum
+- Huge pages check reads `hugepagesz=`/`hugepages=` from `GRUB_CMDLINE_LINUX_DEFAULT` and `/sys/kernel/mm/hugepages/hugepages-<size>kB/nr_hugepages`; `systemChecks.memory.hugepageSize` (default `2M`) must match exactly and `hugepageCount` (default `256`) is a minimum. Pages in use are reported for information only (a stopped validator uses none); a warning is shown if every page is in use
 - NTP check supports multiple time synchronization methods (systemd-timesyncd, chronyd, ntpd, OpenNTPD)
 - Package update checker automatically detects apt, dnf, yum, pacman, or zypper package managers

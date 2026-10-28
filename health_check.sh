@@ -2171,6 +2171,33 @@ check_hugepages() {
       echo -e "  ${YELLOW}If GRUB is already configured, run 'sudo update-grub' and reboot to apply${NC}"
       ((issues++))
     fi
+
+    # Usage is informational: a stopped validator (or one without XDP) legitimately uses none
+    local free_file="${nr_file%/nr_hugepages}/free_hugepages"
+    if [ "$allocated" -gt 0 ] && [ -f "$free_file" ]; then
+      local free in_use usage
+      free=$(cat "$free_file")
+      in_use=$((allocated - free))
+      usage="$in_use/$allocated"
+
+      # Match the exact process name so solana-validator-ha and similar tools are not counted
+      local pid hugetlb_kb=0 agave_running=false kb
+      for pid in $(pgrep -x agave-validator 2>/dev/null); do
+        agave_running=true
+        kb=$(awk '/^HugetlbPages:/ {print $2}' "/proc/$pid/status" 2>/dev/null)
+        hugetlb_kb=$((hugetlb_kb + ${kb:-0}))
+      done
+      if [ "$agave_running" = true ]; then
+        usage="$usage (agave-validator: $((hugetlb_kb / 1024)) MB)"
+      else
+        usage="$usage (agave-validator not running)"
+      fi
+      echo -e "  ${BLUE}INFO: $expected_size huge pages in use: $usage${NC}"
+
+      if [ "$free" -eq 0 ]; then
+        echo -e "  ${YELLOW}WARNING: All $allocated huge pages of size $expected_size are in use - consider increasing hugepages=${NC}"
+      fi
+    fi
   else
     echo -e "  ${RED}FAIL: Huge page size $expected_size not supported by the running kernel ($nr_file not found)${NC}"
     ((issues++))
