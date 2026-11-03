@@ -24,21 +24,23 @@ TPU_HOSTS=(
 
 # Harmonic Shred Receiver endpoints (IP:port - ping uses IP only)
 SHRED_HOSTS=(
-    "64.130.42.138"    # Amsterdam
-    "198.73.57.238"    # Newark
-    "64.130.32.204"    # Frankfurt
-    "64.130.63.16"     # London
-    "63.254.162.99"    # Tokyo
-    "198.13.130.228"   # Singapore
+    "63.254.166.232"   # Amsterdam
+    "64.130.45.196"    # Newark
+    "198.13.140.105"   # Frankfurt
+    "64.130.46.242"    # London
+    "198.13.133.200"   # Tokyo
+    "198.13.130.10"    # Singapore
+    "64.130.33.192"    # Salt Lake City
 )
 
 SHRED_LABELS=(
-    "64.130.42.138:8001 (Amsterdam)"
-    "198.73.57.238:8001 (Newark)"
-    "64.130.32.204:8001 (Frankfurt)"
-    "64.130.63.16:8001 (London)"
-    "63.254.162.99:8001 (Tokyo)"
-    "198.13.130.228:8001 (Singapore)"
+    "63.254.166.232:8001 (Amsterdam)"
+    "64.130.45.196:8001 (Newark)"
+    "198.13.140.105:8001 (Frankfurt)"
+    "64.130.46.242:8001 (London)"
+    "198.13.133.200:8001 (Tokyo)"
+    "198.13.130.10:8001 (Singapore)"
+    "64.130.33.192:8001 (Salt Lake City)"
 )
 
 # Number of pings to send
