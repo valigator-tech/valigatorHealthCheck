@@ -8,6 +8,7 @@ AUCTION_HOSTS=(
     "lon.auction.harmonic.gg"
     "tyo.auction.harmonic.gg"
     "sgp.auction.harmonic.gg"
+    "slc.auction.harmonic.gg"
 )
 
 # Harmonic TPU Relayer endpoints
@@ -18,6 +19,7 @@ TPU_HOSTS=(
     "lon.tpu.harmonic.gg"
     "tyo.tpu.harmonic.gg"
     "sgp.tpu.harmonic.gg"
+    "slc.tpu.harmonic.gg"
 )
 
 # Harmonic Shred Receiver endpoints (IP:port - ping uses IP only)
