@@ -148,12 +148,16 @@ sudo ./health_check.sh -h                 # Help
 
 **Usage**:
 ```bash
-./harmonic_ping_test.sh
+./harmonic_ping_test.sh          # Block engine endpoints only
+./harmonic_ping_test.sh --full   # Also Remote TPU and shred receivers
 ```
 
-**Hosts Tested**:
-- ams.auction.harmonic.gg (Amsterdam)
-- ewr.auction.harmonic.gg (Newark/EWR)
+**Hosts Tested** (source: https://docs.harmonic.gg/run-a-validator/endpoints):
+- Block Engine / Auction (default): `{ams,ewr,fra,lon,tyo,sgp,slc}.auction.harmonic.gg`
+- Remote TPU (`--full`): `{ams,ewr,fra,lon,tyo,sgp,slc}.tpu.harmonic.gg`
+- Shred Receiver (`--full`): one IP per region, port 8001 (ping uses the IP only)
+
+Regions: Amsterdam, Newark, Frankfurt, London, Tokyo, Singapore, Salt Lake City
 
 **Output**: Tabular format showing Min/Avg/Max latency and packet loss percentage for each endpoint.
 
