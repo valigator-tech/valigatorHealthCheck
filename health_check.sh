@@ -168,8 +168,10 @@ get_config() {
 # Function to check if a specific check should be run
 should_run_check() {
   local check_name="$1"
+  # Optional second argument: value to use when the key is missing from the config (default: true)
+  local default="${2:-true}"
   local result
-  result=$(get_config ".checksToRun.$check_name" "true")
+  result=$(get_config ".checksToRun.$check_name" "$default")
   
   # Convert to lowercase for standardization
   result=$(echo "$result" | tr '[:upper:]' '[:lower:]')
@@ -2222,6 +2224,63 @@ if should_run_check "hugepages"; then
 else
   echo -e "\n${YELLOW}=== Huge Pages ===${NC}"
   echo -e "${BLUE}Checking huge page configuration... ${YELLOW}[SKIPPED]${NC}"
+fi
+
+# Function to check nohz_full is set in GRUB (only enabled on hosts that use tickless CPUs)
+check_nohz_full() {
+  echo -e "\n${YELLOW}=== Tickless CPUs (nohz_full) ===${NC}"
+  echo -e "${BLUE}Checking nohz_full in GRUB command line...${NC}"
+
+  local grub_file="/etc/default/grub"
+
+  if [ ! -f "$grub_file" ]; then
+    echo -e "  ${RED}FAIL: GRUB configuration file not found at $grub_file${NC}"
+    return 1
+  fi
+
+  local cmdline_default
+  cmdline_default=$(grep "^GRUB_CMDLINE_LINUX_DEFAULT=" "$grub_file" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'"'")
+
+  # Match whole tokens so other parameters containing "nohz_full" are not mistaken for it
+  local grub_value="" token
+  for token in $cmdline_default; do
+    case "$token" in
+      nohz_full=*) grub_value=${token#nohz_full=} ;;
+    esac
+  done
+
+  if [ -z "$grub_value" ]; then
+    echo -e "  ${RED}FAIL: 'nohz_full=' missing from GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+    echo -e "  ${YELLOW}Add 'nohz_full=<cpu list>' to GRUB_CMDLINE_LINUX_DEFAULT in $grub_file${NC}"
+    echo -e "  ${YELLOW}Then run: sudo update-grub && sudo reboot${NC}"
+    return 1
+  fi
+
+  echo -e "  ${GREEN}PASS: 'nohz_full=$grub_value' found in GRUB_CMDLINE_LINUX_DEFAULT${NC}"
+
+  # nohz_full only takes effect at boot, so flag a GRUB change that has not been applied yet
+  local running_value=""
+  for token in $(cat /proc/cmdline 2>/dev/null); do
+    case "$token" in
+      nohz_full=*) running_value=${token#nohz_full=} ;;
+    esac
+  done
+
+  if [ "$running_value" != "$grub_value" ]; then
+    echo -e "  ${YELLOW}WARNING: Running kernel has nohz_full='${running_value:-<not set>}' - run 'sudo update-grub' and reboot to apply${NC}"
+  fi
+  return 0
+}
+
+# Check nohz_full if enabled in config (off unless a config explicitly enables it)
+if should_run_check "nohzFull" "false"; then
+  if ! check_nohz_full; then
+    ((failures++))
+    failed_checks+=("Tickless CPUs: nohz_full")
+  fi
+else
+  echo -e "\n${YELLOW}=== Tickless CPUs (nohz_full) ===${NC}"
+  echo -e "${BLUE}Checking nohz_full in GRUB command line... ${YELLOW}[SKIPPED]${NC}"
 fi
 
 # Summary - Always show this part even in quiet mode

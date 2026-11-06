@@ -18,6 +18,7 @@ The script verifies the following aspects of your system:
 - **CPU Driver**: Ensures that the p-state CPU scaling driver is being used
 - **SMT (Hyperthreading)**: Verifies SMT matches the configured state (default: disabled)
 - **Memory Management**: Confirms swap is disabled
+- **Tickless CPUs (nohz_full)**: Optional (off by default) - verifies `nohz_full=` is set in GRUB on hosts that use tickless CPU cores
 - **Huge Pages**: Verifies `hugepagesz`/`hugepages` are set in GRUB and that the running kernel has allocated at least that many huge pages
 - **Security Services**: Checks that fail2ban is installed, enabled, and running
 - **System Updates**: Validates that there are no more than 5 package updates pending
@@ -68,6 +69,7 @@ The configuration file is structured as follows:
     "smtStatus": true,
     "swapStatus": true,
     "hugepages": true,
+    "nohzFull": false,
     "packageUpdates": true,
     "ntpSync": true,
     "fail2ban": true,
@@ -172,5 +174,6 @@ The script provides color-coded output for easy interpretation:
 - CPU boost check handles both Intel and AMD-specific boost mechanisms
 - SMT check reads `/sys/devices/system/cpu/smt/active`; `systemChecks.cpu.smt` accepts `disabled` (default), `enabled`, or `any` (report only). If the key is missing from the config, the check still runs and expects `disabled`
 - Huge pages check reads `hugepagesz=`/`hugepages=` from `GRUB_CMDLINE_LINUX_DEFAULT` and `/sys/kernel/mm/hugepages/hugepages-<size>kB/nr_hugepages`; `systemChecks.memory.hugepageSize` (default `2M`) must match exactly and `hugepageCount` (default `256`) is a minimum. Pages in use are reported for information only (a stopped validator uses none); a warning is shown if every page is in use
+- The nohz_full check is off unless `checksToRun.nohzFull` is explicitly `true` (a missing key counts as off, unlike other checks). It fails if `nohz_full=` is missing from `GRUB_CMDLINE_LINUX_DEFAULT` and warns if the running kernel (`/proc/cmdline`) does not match yet
 - NTP check supports multiple time synchronization methods (systemd-timesyncd, chronyd, ntpd, OpenNTPD)
 - Package update checker automatically detects apt, dnf, yum, pacman, or zypper package managers

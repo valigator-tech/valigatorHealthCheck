@@ -22,7 +22,8 @@
     "nvmeWear": true,
     "requiredPackages": true,
     "grubCmdline": true,
-    "hugepages": true
+    "hugepages": true,
+    "nohzFull": false
   },
   "systemChecks": {
     "cpu": {
